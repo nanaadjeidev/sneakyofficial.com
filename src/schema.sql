@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS UserStats (
     average_guess_count DECIMAL(4,1) DEFAULT 0,
     played_today BOOLEAN DEFAULT FALSE,
     PRIMARY KEY (discord_id)
-)
+);
 
 CREATE TABLE IF NOT EXISTS TodaysLeaderboard (
     discord_id BIGINT,
@@ -28,4 +28,4 @@ CREATE TABLE IF NOT EXISTS SplatdleChannels(
     guild_id BIGINT,
     channel_id BIGINT,
     PRIMARY KEY (guild_id)
-)
+);

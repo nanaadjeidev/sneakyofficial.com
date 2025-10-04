@@ -91,7 +91,7 @@ class SplatdleExt(interactions.Extension):
                         line = f"**{i+1}.** {user.username} - {record['guess_count']} guesses"
                     else:
                         streak_emoji = "🔥" if record['streak'] > 0 else "💔"
-                        weighted_score = record['average_guess_count'] + 2.0 / (record['times_played'] ** 0.5)
+                        weighted_score = float(record['average_guess_count']) + 2.0 / (record['times_played'] ** 0.5)
                         line = (
                             f"**{i+1}.** {user.username} - {record['average_guess_count']:.1f} avg"
                             f"(weighted: {weighted_score:.1f}) ({record['times_played']} games)"

@@ -4586,7 +4586,7 @@
       "firerate": 30,
       "range": 18,
       "damage": 50,
-      "weight": "Normal",
+      "weight": "Fast",
       "sub": "Splat Bomb",
       "special": "Zipcaster",
       "hint_released": "Side Order (Splatoon 3 - 7.0.0)",
