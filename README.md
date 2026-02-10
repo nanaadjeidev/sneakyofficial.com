@@ -142,7 +142,7 @@ python splatkeyfixer.py
 
 Want to collaborate, give feedback, or report a bug that ruined your Splatdle streak?
 
-* Discord: `sneakynarnar`
+* Discord: `sneakyonnightmode`
 * Email: [nanaadjei6981@gmail.com](mailto:nanaadjei6981@gmail.com)
 * Website: [**sneakyofficial.com**](https://sneakyofficial.com/socials)
 
@@ -150,3 +150,4 @@ Want to collaborate, give feedback, or report a bug that ruined your Splatdle st
 
 > “Stay fresh.”
 > Still applies to codebases.
+
