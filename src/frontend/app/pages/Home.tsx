@@ -14,11 +14,11 @@ const HomePage = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   
   const animations = useMemo(() => [
-    { 
-      text: "<Develops/>", 
-      colour: "#00ff88", 
+    {
+      text: "<Develops/>",
+      colour: "#00ff88",
       component: TypewriterText,
-      duration: 5000 
+      duration: 3850
     },
     { 
       text: "Creates Content", 
