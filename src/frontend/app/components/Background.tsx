@@ -4,29 +4,29 @@ import * as THREE from "three";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const POINT_NO         = 220;
+const POINT_NO         = 200;
 const SPEED            = 0.00065;
 const Z_RANGE: [number, number] = [-1, 2];
 const MAX_DIST_SQ      = 3.2 * 3.2;
-const CHAIN_MAX_DEPTH  = 28;
+const CHAIN_MAX_DEPTH  = 14;
 const LINE_DRAW_SPEED  = 6;
-const LINE_STAGGER     = 0.06;   // seconds between each segment's start
+const LINE_STAGGER     = 0.06;
 const LINE_AGE         = 8;
 const LINE_FADE_RATE   = 0.5;
 const AUTO_CHAIN_MS    = 11000;
 const BUCKET_SIZE      = 1.8;
 const BG_COLOR         = "#050b14";
 
+// Mostly white/pale — only a faint blue-teal accent
 const PALETTE = [
-  "#4fc3f7", // sky blue
-  "#7c4dff", // electric violet
-  "#00e5ff", // cyan
-  "#b388ff", // soft lavender
-  "#40c4ff", // azure
-  "#e040fb", // neon pink
-  "#a5f3fc", // ice blue
-  "#80deea", // teal-blue
   "#ffffff",
+  "#ffffff",
+  "#ffffff",
+  "#dce8ff", // very pale blue-white
+  "#dce8ff",
+  "#b8d4f0", // soft blue-grey
+  "#9ec8e8", // muted sky
+  "#cce0f5", // near-white blue
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -220,8 +220,8 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
 
     for (let i = 0; i < POINT_NO; i++) {
       const hex   = PALETTE[Math.floor(Math.random() * PALETTE.length)];
-      const isHub = Math.random() < 0.08;
-      const size  = isHub ? 12 + Math.random() * 8 : 3 + Math.random() * 4;
+      const isHub = Math.random() < 0.04;
+      const size  = isHub ? 4 + Math.random() * 3 : 1.2 + Math.random() * 1.8;
       const color = new THREE.Color(hex);
       const angle = Math.random() * Math.PI * 2;
       const spd   = SPEED * (0.5 + Math.random() * 0.8);
@@ -294,9 +294,12 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
 
     visited.add(startIdx);
     let curIdx = startIdx;
-    const maxDepth = CHAIN_MAX_DEPTH + Math.floor(Math.random() * 12);
+    const maxDepth = Math.ceil(Math.random() * CHAIN_MAX_DEPTH);
 
     for (let depth = 0; depth < maxDepth; depth++) {
+      // Randomly break the chain early for less predictable patterns
+      if (depth > 3 && Math.random() < 0.18) break;
+
       const cur = pts[curIdx];
       const nearby = getCandidates(buckets, cur.pos.x, cur.pos.y, cur.pos.z)
         .filter(idx => !visited.has(idx) && pts[idx].pos.distanceToSquared(cur.pos) < MAX_DIST_SQ)
@@ -304,8 +307,8 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
 
       if (!nearby.length) break;
 
-      // Pick from top 3 nearest for organic feel instead of strict greedy
-      const nextIdx = nearby[Math.floor(Math.random() * Math.min(3, nearby.length))];
+      // Pick from top 5 for more varied, less linear paths
+      const nextIdx = nearby[Math.floor(Math.random() * Math.min(5, nearby.length))];
       pairs.push([curIdx, nextIdx, cur.hex]);
       visited.add(nextIdx);
       curIdx = nextIdx;
