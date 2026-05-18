@@ -297,7 +297,7 @@ const Splatdle = () => {
       ];
       return cells.map(c => c === "G" ? "🟩" : c === "Y" ? "🟨" : c === "?" ? "⬛" : "🟥").join("");
     });
-    return `SPLATDLE: ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}\n\n${rows.join("\n")}\n\nhttps://sneakyofficial.com/splatdle`;
+    return `SPLATDLE: ${guesses.length} ${guesses.length === 1 ? "guess" : "guesses"}\n\n||${rows.join("\n")}||\n\nhttps://sneakyofficial.com/splatdle`;
   };
 
   const copyToClipboard = async () => {
