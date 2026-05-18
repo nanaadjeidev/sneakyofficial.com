@@ -1,1 +1,1 @@
-{"weapon": {"name": "REEF-LUX 450 Deco", "game": "Splatoon 3"}, "date": "2026-05-18"}
+{"weapon": {"name": "Neo Sploosh-o-matic", "game": "Splatoon 2"}, "date": "2026-05-18"}

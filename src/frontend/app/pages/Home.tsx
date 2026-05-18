@@ -118,24 +118,24 @@ const HomePage = () => {
         >
           <div className="space-y-4 text-sm sm:text-base leading-relaxed">
             <p className="break-words">
-              I'm a full-stack developer currently completing my placement year as part of a BSc in Software Engineering. 
-              My current work focuses on C++ and Python, contributing to real-world systems that involve robotics, hardware integration, 
-              and scalable backend infrastructure. I've gained hands-on experience with containerization (Docker, Kubernetes), REST APIs, 
-              CI/CD workflows, and cross-platform development across both Windows and Linux.
+              I'm a final-year Software Engineering student at the University of Portsmouth (graduating 2026),
+              returning from a year-long industry placement at Marine AI. There I worked in C++ and Python on
+              autonomous maritime systems — production code interfacing with real hardware, sensor pipelines,
+              and infrastructure deployed with Docker and Kubernetes.
             </p>
             <p className="break-words">
-              I enjoy architecting clean, efficient systems and collaborating in team environments that follow modern software practices 
-              like Gitflow, Agile, and professional documentation (including interface control documents and specs). Whether it's writing 
-              multithreaded code or integrating with hardware over serial or IP, I take pride in delivering robust and maintainable solutions.
+              For my final-year project I designed and built{" "}
+              <a href="https://www.esportsunihub.com/" target="_blank" rel="noopener noreferrer" className="text-green-400 hover:text-green-300 underline underline-offset-2">esportsunihub.com</a>
+              , a platform connecting UK university esports communities. I'm comfortable across the full stack:
+              TypeScript, React, Python, Node.js, MySQL, and containerised deployments.
             </p>
             <p className="break-words">
-              Outside of engineering, I'm also a music producer working on an upcoming EP, and I create content on YouTube. I run an anime 
-              analysis channel where I break down storytelling, character design, and themes in my favorite series, and I'm launching a 
-              Splatoon-focused channel with walkthroughs, tips, and gameplay breakdowns.
+              Outside of engineering, I produce hip-hop — my debut EP <em>Prophecy</em> is out on SoundCloud
+              and Spotify. I also run an anime analysis channel on YouTube and create Splatoon content.
             </p>
             <p className="break-words">
-              I'm always looking to grow, collaborate, and build cool things—whether that's a new feature, a new beat, or a new video essay. 
-              Feel free to connect or check out my work on GitHub!
+              Always looking to build, collaborate, and ship things that actually work. Check out my projects
+              or connect via GitHub.
             </p>
           </div>
         </GlassSection>

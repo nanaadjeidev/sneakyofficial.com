@@ -8,43 +8,41 @@ interface GlassSectionProps {
   imgAlt?: string;
 }
 
-const GlassSection: React.FC<GlassSectionProps> = ({ 
-  children, 
-  className = "", 
+const GlassSection: React.FC<GlassSectionProps> = ({
+  children,
+  className = '',
   title,
   imgSrc,
-  imgAlt 
+  imgAlt,
 }) => {
   return (
-    <section className={`
-      relative w-full py-16 px-4 sm:px-6 lg:px-8
-      bg-white/8 backdrop-blur-md
-      border-y border-white/15
-      ${className}
-    `}>
-      <div className="absolute inset-0 bg-gradient-to-r from-white/5 via-transparent to-white/5 pointer-events-none" />
-      
-      <div className="relative z-10 max-w-7xl mx-auto">
+    <section
+      className={`relative w-full py-16 px-4 sm:px-6 lg:px-8 glass border-y border-white/12 ${className}`}
+    >
+      <div className="absolute inset-0 bg-gradient-to-r from-white/4 via-transparent to-white/4 pointer-events-none rounded-none" />
+
+      <div className="relative z-10 max-w-6xl mx-auto">
         <div className="flex flex-col lg:flex-row items-start gap-12">
           <div className="flex-1 order-2 lg:order-1">
             {title && (
-              <h2 className="text-4xl lg:text-5xl font-bold text-white mb-8 drop-shadow-lg">
+              <h2 className="text-3xl lg:text-4xl font-bold text-white mb-8 tracking-tight">
                 {title}
               </h2>
             )}
-            
-            <div className="text-white/90 space-y-6 text-lg leading-relaxed">
+            <div className="text-white/85 space-y-5 text-base leading-relaxed">
               {children}
             </div>
           </div>
-          
+
           {imgSrc && (
             <div className="flex-shrink-0 order-1 lg:order-2">
-              <img 
-                src={imgSrc} 
-                alt={imgAlt || ""} 
-                className="w-50 h-50 lg:w-100 lg:h-100 rounded-full object-cover border-4 border-white/30 shadow-xl mx-auto"
-              />
+              <div className="p-1 rounded-full bg-gradient-to-br from-white/20 to-white/5">
+                <img
+                  src={imgSrc}
+                  alt={imgAlt ?? ''}
+                  className="w-48 h-48 lg:w-64 lg:h-64 rounded-full object-cover shadow-2xl"
+                />
+              </div>
             </div>
           )}
         </div>

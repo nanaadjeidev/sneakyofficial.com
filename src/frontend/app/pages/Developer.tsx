@@ -1,163 +1,165 @@
 import { Helmet } from "react-helmet";
 import PageWrapper from "../components/PageWrapper";
-import Section from "../components/Section";
 import marineAiLogo from "../assets/marineai.png";
 import sneakyLogo from "../assets/sneaky.jpg";
 import oce4MansLogo from "../assets/oce4mans.png";
-import private6mansLogo from "../assets/private6mans.png"
+import private6mansLogo from "../assets/private6mans.png";
 import TitlePage from "../components/TitlePage";
-import Project from "../components/Project";
 import TypewriterText from "../components/TypewriterText";
 import GitHubCard from "../components/GithubCard";
+import { ExternalLink, Github, Code2, Briefcase } from "lucide-react";
 
-const Developer = () => {
+const PROFESSIONAL_PROJECTS = [
+  {
+    title: "Marine AI",
+    imgSrc: marineAiLogo,
+    tags: ["C++", "Python", "Docker", "Kubernetes", "Linux"],
+    description:
+      "Completed a year-long industry placement at Marine AI working on autonomous maritime systems. Developed backend services in C++ and Python, integrated real-time sensor pipelines, and deployed infrastructure with Docker and Kubernetes. Production-grade engineering on systems that operate in the real world.",
+  },
+  {
+    title: "Esports Uni Hub",
+    tags: ["Full-Stack", "React", "TypeScript", "FYP"],
+    description:
+      "Designed and built esportsunihub.com as my final-year project. A platform connecting UK university esports communities, helping students find teams, track results, and compete in organised leagues.",
+    externalUrl: "https://www.esportsunihub.com/",
+  },
+  {
+    title: "OCE 4 Mans",
+    imgSrc: oce4MansLogo,
+    tags: ["TypeScript", "Node.js", "Express", "React", "Discord API"],
+    description:
+      "A full-stack matchmaking platform for the Rocket League OCE community. Handles automated rank tracking, Discord integration, player history, and structured 4-man queues. Built from scratch.",
+  },
+  {
+    title: "Private6Mans",
+    imgSrc: private6mansLogo,
+    tags: ["TypeScript", "Discord API"],
+    description:
+      "Joined the dev team for Private6Mans, a bot used in competitive Rocket League for structured matchmaking and stat tracking. Shipped match history views, a /fixteams command, and various quality-of-life fixes.",
+  },
+];
 
-  const personalProjects = [
-    {
-      title: "Pet-Ascension",
-      description: `A goofy spiritual-themed game where you help a pet reach ascension—
-      built using Express.js for the backend and plain JavaScript, HTML, and CSS on the front.
-      It's raw, hand-rolled, and somehow earned the top mark of the year for my first-year uni project.`,
-      repo: "Pet-Ascension",
-    },
-    {
-      title: "You're Fat Stop That",
-      description: `A brutally honest weight tracker web app with a sarcastic twist.
-      Built using Express.js and pure HTML/CSS/JS, with no frameworks—just vibes and HTTP.
-      It gamifies health with some tough love, and yes, it got a first-class grade. No regrets.`,
-      repo: "youre-fat-stop-that",
-    },
-    {
-      title: "CPP Snake",
-      description: `A console-based Snake game built in **C++**. This was my first C++ project, created right before I started at MarineAI
-      to get hands-on experience with the language. It helped me solidify fundamentals like input handling, game loops, and basic terminal rendering.
-      Nothing fancy—just good ol' ASCII-based gameplay.`,
-      repo: "CPP-Snake",
-    },
-    {
-      title: "University Work",
-      description: `A public archive of various problem-solving tasks from university, including my solutions to **Haskell**, **SQL**, and logic-based challenges.
-      It's not flashy, but it shows my growth across different paradigms—from functional programming to relational querying.`,
-      repo: "university-work",
-    }
-  ];
+const PERSONAL_PROJECTS = [
+  { title: "Pet-Ascension", repo: "Pet-Ascension", description: "A spiritual-themed browser game. Express.js, plain JS/HTML/CSS, no frameworks. Top mark of the year for a first-year university project." },
+  { title: "You're Fat Stop That", repo: "youre-fat-stop-that", description: "A blunt weight tracker with a sarcastic edge. Built with Express.js and vanilla HTML/CSS/JS. First-class grade." },
+  { title: "CPP Snake", repo: "CPP-Snake", description: "Terminal Snake game in C++, built ahead of placement to learn the language. Covers game loops, input handling, and ASCII rendering." },
+  { title: "University Work", repo: "university-work", description: "Public archive of university problem sets — Haskell, SQL, and logic-based challenges across three years of the degree." },
+];
 
-  const professionalProjects = [
-    {
-      title: "Marine AI",
-      imgSrc: marineAiLogo,
-      imgAlt: "Marine AI Logo",
-      description: `During my placement year at Marine AI, I've worked on cutting-edge robotics and autonomous systems.
-      My role involves developing scalable backend services in C++ and Python, working on systems that interact with real-time sensor data,
-      and deploying solutions with Docker and Kubernetes. It's been a deep dive into high-performance systems and production-grade software.`,
-    },
-    {
-      title: "OCE 4 Mans",
-      imgSrc: oce4MansLogo,
-      imgAlt: "OCE 4 Mans Logo",
-      description: `An ongoing side project for the Rocket League OCE community. It's a full-stack matchmaking platform
-      for 4 mans and 2v2s with automated rank tracking, Discord integration, and player history.
-      I've built the entire platform from scratch using TypeScript, Node.js, Express, and React.`,
-    },
-    {
-      title: "Private6Mans",
-      imgSrc: private6mansLogo,
-      imgAlt: "Private6Mans Logo",
-      description: `Joined the development team for **Private6Mans**, a well-established bot used in competitive Rocket League scenes for structured matchmaking and stat tracking.
-      My contributions so far include implementing match history views in the stats system and adding a **/fixteams** command to manually set teams after issues with auto-balance.
-      Still learning the codebase but actively shipping features and fixes.`,
-    }
-  ];
+const Developer = () => (
+  <PageWrapper>
+    <Helmet>
+      <title>Developer | Sneaky: Full-Stack Engineer</title>
+      <meta name="description" content="Sneaky's software engineering portfolio. Full-stack projects, C++/Python work at Marine AI, and open-source contributions." />
+      <meta property="og:title" content="Developer Portfolio | Sneaky" />
+      <meta property="og:description" content="Full-stack projects, C++/Python experience, and open-source contributions." />
+      <meta property="og:image" content="/image.png" />
+      <meta property="og:url" content="https://sneakyofficial.com/developer" />
+      <meta property="og:type" content="website" />
+      <meta name="twitter:card" content="summary_large_image" />
+    </Helmet>
 
-  return (
-    <PageWrapper>
-      <Helmet>
-        <title>Developer | Sneaky's Portfolio - Full-Stack Projects & Experience</title>
-        <meta name="description" content="Explore Sneaky's development portfolio featuring full-stack projects, C++/Python experience at Marine AI, and open-source contributions. Check out my GitHub projects!" />
-        <meta property="og:title" content="Developer Portfolio | Sneaky's Projects" />
-        <meta property="og:description" content="Explore Sneaky's development portfolio featuring full-stack projects, C++/Python experience, and open-source contributions." />
-        <meta property="og:image" content="/image.png" />
-        <meta property="og:url" content="https://sneakyofficial.com/developer" />
-        <meta property="og:type" content="website" />
-        <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:title" content="Developer Portfolio | Sneaky's Projects" />
-        <meta name="twitter:description" content="Explore Sneaky's development portfolio featuring full-stack projects, C++/Python experience, and open-source contributions." />
-        <meta name="twitter:image" content="/image.png" />
-      </Helmet>
-      <main className="w-full overflow-x-hidden">
-        <TitlePage
-          imgSrc={sneakyLogo}
-          imgAlt="Sneaky Logo"
-          verb="<Develops/>"
-          colour='#00ff88'
-          loop={true}
-          TextAnimationComponent={TypewriterText}
-        />
-        
-        <Section title="This website!">
-          <div className="flex flex-col gap-6 sm:gap-8">
-            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-center gap-4 lg:gap-6">
-              <div className="w-full lg:w-1/2 text-neutral-300 text-sm px-2 sm:px-0">
-                <h3 className="text-base sm:text-lg font-semibold mb-2 text-white break-words">
-                  Sneaky Official website
-                </h3>
-                <p className="leading-relaxed break-words">
-                  This page was made using React, Typescript and Tailwind. The backend is in Python with a MySQL database. 
-                  The discord bot is also programmed in python using the interactions library. If you want to roast my code, 
-                  or even suggest changes It's much appreciated! You might even find secret pages ;).
-                </p>
-              </div>
-              <div className="w-full lg:w-1/2 flex justify-center px-2 sm:px-0">
-                <GitHubCard username="Sneakynarnar" repo="sneakyofficial.com"/>
+    <main className="w-full overflow-x-hidden">
+      <TitlePage
+        imgSrc={sneakyLogo}
+        imgAlt="Sneaky"
+        verb="<Develops/>"
+        colour="#00ff88"
+        loop={true}
+        TextAnimationComponent={TypewriterText}
+      />
+
+      {/* This site */}
+      <section className="max-w-5xl mx-auto px-6 py-14">
+        <h2 className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-5">This site</h2>
+        <div className="glass-card p-6 flex flex-col sm:flex-row items-start gap-6">
+          <div className="flex-1 text-sm leading-relaxed text-slate-300">
+            <h3 className="text-base font-semibold text-white mb-2">sneakyofficial.com</h3>
+            <p>
+              Built with React, TypeScript, and Tailwind. Backend is Python (aiohttp) with MySQL and a
+              Discord bot. The particle background is a custom Three.js WebGL renderer. Includes Splatdle,
+              a daily Splatoon puzzle with Discord OAuth and persistent leaderboards.
+            </p>
+          </div>
+          <div className="flex gap-3 flex-shrink-0">
+            <a
+              href="https://github.com/Sneakynarnar/sneakyofficial.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-2 glass border border-white/10 text-slate-300 rounded-lg hover:text-white transition-colors"
+            >
+              <Github className="w-3.5 h-3.5" />
+              Code
+            </a>
+            <a
+              href="https://sneakyofficial.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-2 bg-green-500/15 border border-green-500/25 text-green-400 rounded-lg hover:bg-green-500/25 transition-colors"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Live
+            </a>
+          </div>
+        </div>
+      </section>
+
+      {/* Professional */}
+      <section className="max-w-5xl mx-auto px-6 pb-14">
+        <h2 className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-5 flex items-center gap-2">
+          <Briefcase className="w-3.5 h-3.5" />
+          Professional work
+        </h2>
+        <div className="space-y-4">
+          {PROFESSIONAL_PROJECTS.map(p => (
+            <div key={p.title} className="glass-card p-6 flex flex-col sm:flex-row items-start gap-5">
+              {p.imgSrc && (
+                <img src={p.imgSrc} alt={p.title} className="w-12 h-12 rounded-lg object-contain bg-white/5 p-1 flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2 mb-2">
+                  <h3 className="text-sm font-semibold text-white">{p.title}</h3>
+                  {p.externalUrl && (
+                    <a href={p.externalUrl} target="_blank" rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-green-500/15 border border-green-500/25 text-green-400 rounded hover:bg-green-500/25 transition-colors">
+                      <ExternalLink className="w-2.5 h-2.5" />Visit
+                    </a>
+                  )}
+                </div>
+                <p className="text-slate-400 text-sm leading-relaxed mb-3">{p.description}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {p.tags.map(t => (
+                    <span key={t} className="text-xs px-2 py-0.5 rounded bg-white/6 border border-white/10 text-slate-400">{t}</span>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </Section>
+          ))}
+        </div>
+      </section>
 
-        <Section title="Professional Projects">
-          <div className="space-y-6 sm:space-y-8">
-            {professionalProjects.map((project) => (
-              <div key={project.title} className="w-full">
-                <Project
-                  title={project.title}
-                  imgSrc={project.imgSrc}
-                  imgAlt={project.imgAlt}
-                >
-                  <div className="break-words leading-relaxed">
-                    {project.description}
-                  </div>
-                </Project>
+      {/* Personal */}
+      <section className="max-w-5xl mx-auto px-6 pb-20">
+        <h2 className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-5 flex items-center gap-2">
+          <Code2 className="w-3.5 h-3.5" />
+          Personal projects
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {PERSONAL_PROJECTS.map(p => (
+            <div key={p.repo} className="flex flex-col gap-4">
+              <div className="glass-card p-5 flex-1">
+                <h3 className="text-sm font-semibold text-white mb-1">{p.title}</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">{p.description}</p>
               </div>
-            ))}
-          </div>
-        </Section>
-
-        <Section title="Personal Projects">
-          <div className="flex flex-col gap-6 sm:gap-8">
-            {personalProjects.map((project) => (
-              <div key={project.repo} className="flex flex-col lg:flex-row items-start lg:items-center justify-center gap-4 lg:gap-6">
-                <div className="w-full lg:w-1/2 text-neutral-300 text-sm px-2 sm:px-0">
-                  <h3 className="text-base sm:text-lg font-semibold mb-2 text-white break-words">
-                    {project.title}
-                  </h3>
-                  <p className="leading-relaxed break-words">
-                    {project.description}
-                  </p>
-                </div>
-                <div className="w-full lg:w-1/2 flex justify-center px-2 sm:px-0">
-                  <GitHubCard username="Sneakynarnar" repo={project.repo} />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-6 sm:mt-8 text-center text-neutral-400 px-2 sm:px-0 break-words">
-            More chaotic projects are always brewing.
-          </p>
-        </Section>
-      </main>
-    </PageWrapper>
-  );
-};
+              <GitHubCard username="Sneakynarnar" repo={p.repo} />
+            </div>
+          ))}
+        </div>
+        <p className="mt-8 text-center text-slate-500 text-xs">More in progress, check GitHub for the full picture.</p>
+      </section>
+    </main>
+  </PageWrapper>
+);
 
 export default Developer;
