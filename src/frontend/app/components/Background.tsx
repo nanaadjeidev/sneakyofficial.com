@@ -1,384 +1,432 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import React, { useRef, useState, useMemo, createRef, useEffect } from "react";
+import React, { useRef, useState, useMemo, useEffect, useCallback } from "react";
 import * as THREE from "three";
 
-// import { OrbitControls, Stars } from '@react-three/drei'
-import { Mesh, Group, Line as ThreeLine, BufferAttribute } from "three";
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const POINT_NO = 1000;
-// const RANDOM_CHAIN_INTERVAL_RANGE = [5000, 20000]
-const CHAIN_RANGE: [number, number] = [4, 50];
-const LINE_AGE = 10;
-const LINE_FADE_RATE = 0.3;
-const LINE_SPEED = 2;
-const Y_VELOCITY_RANGE: [number, number] = [-0.0005, 0.0005];
-const X_VELOCITY_RANGE: [number, number] = [-0.0005, 0.0005];
-const Z_POS_RANGE: [number, number] = [-2, 4];
+const POINT_NO         = 220;
+const SPEED            = 0.00065;
+const Z_RANGE: [number, number] = [-1, 2];
+const MAX_DIST_SQ      = 3.2 * 3.2;
+const CHAIN_MAX_DEPTH  = 28;
+const LINE_DRAW_SPEED  = 6;
+const LINE_STAGGER     = 0.06;   // seconds between each segment's start
+const LINE_AGE         = 8;
+const LINE_FADE_RATE   = 0.5;
+const AUTO_CHAIN_MS    = 11000;
+const BUCKET_SIZE      = 1.8;
+const BG_COLOR         = "#050b14";
 
-type BackgroundPointVel = {
-  velocity: [number, number];
-  meshRef: React.RefObject<Mesh | null>;
-  position: [number, number, number];
+const PALETTE = [
+  "#4fc3f7", // sky blue
+  "#7c4dff", // electric violet
+  "#00e5ff", // cyan
+  "#b388ff", // soft lavender
+  "#40c4ff", // azure
+  "#e040fb", // neon pink
+  "#a5f3fc", // ice blue
+  "#80deea", // teal-blue
+  "#ffffff",
+];
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+type Particle = {
+  pos: THREE.Vector3;
+  vel: THREE.Vector2;
+  color: THREE.Color;
+  hex: string;
+  size: number;
 };
 
-type LineData = {
-  from: React.RefObject<Mesh | null>;
-  to: React.RefObject<Mesh | null>;
-  progress: number;
-  opacity: number;
-  age: number;
+type LineAnim = { progress: number; opacity: number; age: number; delay: number };
+
+type ActiveLine = {
+  id: number;
+  fromIdx: number;
+  toIdx: number;
+  hex: string;
+  anim: LineAnim;
 };
 
-type BackgroundContentProps = {
-  pointsRef: React.RefObject<BackgroundPointVel[]>;
-  lines: LineData[];
-  setLines: React.Dispatch<React.SetStateAction<LineData[]>>;
-};
+type Ripple = { id: number; x: number; y: number };
 
-type BackgroundPointProps = {
-  position: [number, number, number];
-  meshRef: React.RefObject<Mesh | null>;
-  opacity: number;
-};
+// ── Spatial hashing ───────────────────────────────────────────────────────────
 
-function randomInRange([min, max]: [number, number]) {
-  return ((Math.random() * (max - min) + min) * 10000) / 10000;
-}
-
-const BUCKET_SIZE = 1;
-
-const buckets = new Map<string, BackgroundPointVel[]>();
-
-function getBucketKey(x: number, y: number, z: number) {
-  const bx = Math.floor(x / BUCKET_SIZE);
-  const by = Math.floor(y / BUCKET_SIZE);
-  const bz = Math.floor(z / BUCKET_SIZE);
-  return `${bx},${by},${bz}`;
-}
-
-function updateBuckets(points: BackgroundPointVel[]) {
-  buckets.clear();
-  for (const p of points) {
-    const [x, y, z] = p.position;
-    const key = getBucketKey(x, y, z);
-    if (!buckets.has(key)) buckets.set(key, []);
-    buckets.get(key)!.push(p);
+function buildBuckets(particles: Particle[]): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  for (let i = 0; i < particles.length; i++) {
+    const { x, y, z } = particles[i].pos;
+    const key = `${Math.floor(x / BUCKET_SIZE)},${Math.floor(y / BUCKET_SIZE)},${Math.floor(z / BUCKET_SIZE)}`;
+    let b = map.get(key);
+    if (!b) { b = []; map.set(key, b); }
+    b.push(i);
   }
-  console.log(buckets);
+  return map;
 }
 
-function getNearbyPoints(
-  x: number,
-  y: number,
-  z: number
-): BackgroundPointVel[] {
-  const results: BackgroundPointVel[] = [];
+function getCandidates(buckets: Map<string, number[]>, x: number, y: number, z: number): number[] {
   const bx = Math.floor(x / BUCKET_SIZE);
   const by = Math.floor(y / BUCKET_SIZE);
   const bz = Math.floor(z / BUCKET_SIZE);
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
+  const result: number[] = [];
+  for (let dx = -1; dx <= 1; dx++)
+    for (let dy = -1; dy <= 1; dy++)
       for (let dz = -1; dz <= 1; dz++) {
-        const key = `${bx + dx},${by + dy},${bz + dz}`;
-        if (buckets.has(key)) results.push(...buckets.get(key)!);
+        const arr = buckets.get(`${bx + dx},${by + dy},${bz + dz}`);
+        if (arr) result.push(...arr);
       }
-    }
+  return result;
+}
+
+// ── Shaders ───────────────────────────────────────────────────────────────────
+
+const VERT = `
+  attribute float size;
+  attribute vec3 particleColor;
+  varying vec3 vColor;
+  void main() {
+    vColor = particleColor;
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = size * (22.0 / -mvPos.z);
+    gl_Position = projectionMatrix * mvPos;
   }
-  return results;
-}
+`;
 
-function getNearestPoint(
-  x: number,
-  y: number,
-  z: number,
-  visited: Set<BackgroundPointVel> = new Set()
-): BackgroundPointVel | null {
-  const candidates = getNearbyPoints(x, y, z).filter((p) => !visited.has(p));
-
-  let closest: BackgroundPointVel | null = null;
-  let closestDist = Infinity;
-
-  for (const p of candidates) {
-    const dx = p.position[0] - x;
-    const dy = p.position[1] - y;
-    const dz = p.position[2] - z;
-    const dist = dx * dx + dy * dy + dz * dz;
-
-    if (dist < closestDist) {
-      closestDist = dist;
-      closest = p;
-    }
+const FRAG = `
+  varying vec3 vColor;
+  uniform float opacity;
+  void main() {
+    float d = length(gl_PointCoord - vec2(0.5));
+    if (d > 0.5) discard;
+    float core = 1.0 - smoothstep(0.0, 0.22, d);
+    float halo = 1.0 - smoothstep(0.1, 0.5, d);
+    float a = (core * 0.95 + halo * 0.38) * opacity;
+    gl_FragColor = vec4(vColor, a);
   }
+`;
 
-  return closest;
-}
+// ── AnimatedLine ──────────────────────────────────────────────────────────────
 
-function animateChain(
-  chain: BackgroundPointVel[],
-  setLines: React.Dispatch<React.SetStateAction<LineData[]>>
-) {
-  chain.forEach((point, i) => {
-    if (i === chain.length - 1) return;
-
-    const current = point;
-    const next = chain[i + 1];
-
-    setTimeout(() => {
-      setLines((prev) => [
-        ...prev,
-        {
-          from: current.meshRef,
-          to: next.meshRef,
-          progress: 0,
-          opacity: 1,
-          age: 0,
-        },
-      ]);
-    }, i * 150);
-  });
-}
-
-function BackgroundPoint({ position, meshRef, opacity }: BackgroundPointProps) {
-  return (
-    <mesh ref={meshRef} position={position}>
-      <sphereGeometry args={[0.01, 18, 10]} />
-      <meshBasicMaterial color="#FFFFFF" opacity={opacity} />
-    </mesh>
-  );
-}
-
-export function AnimatedLine({ from, to, progress, opacity }: LineData) {
-  const lineRef = useRef<ThreeLine>(null!);
-  const [line] = useState(() => {
-    const geometry = new THREE.BufferGeometry();
-    const material = new THREE.LineBasicMaterial({
-      color: "white",
+function AnimatedLine({ line, particlesRef }: { line: ActiveLine; particlesRef: React.RefObject<Particle[]> }) {
+  const [obj] = useState(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(6), 3));
+    const mat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(line.hex),
       transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
     });
-    return new THREE.Line(geometry, material);
+    return new THREE.Line(geo, mat);
   });
 
   useFrame(() => {
-    if (!from.current || !to.current) return;
+    if (line.anim.delay > 0) return;
+    const pts = particlesRef.current;
+    const from = pts[line.fromIdx]?.pos;
+    const to   = pts[line.toIdx]?.pos;
+    if (!from || !to) return;
 
-    const start = from.current.position;
-    const end = to.current.position;
-    const interpolated = start.clone().lerp(end, progress);
-
-    const positions = new Float32Array([
-      start.x,
-      start.y,
-      start.z,
-      interpolated.x,
-      interpolated.y,
-      interpolated.z,
-    ]);
-
-    line.geometry.setAttribute("position", new BufferAttribute(positions, 3));
-    line.geometry.attributes.position.needsUpdate = true;
-    line.material.opacity = opacity;
+    const lerped = from.clone().lerp(to, line.anim.progress);
+    const arr = obj.geometry.attributes.position.array as Float32Array;
+    arr[0] = from.x;   arr[1] = from.y;   arr[2] = from.z;
+    arr[3] = lerped.x; arr[4] = lerped.y; arr[5] = lerped.z;
+    obj.geometry.attributes.position.needsUpdate = true;
+    (obj.material as THREE.LineBasicMaterial).opacity = line.anim.opacity;
   });
 
-  return <primitive object={line} ref={lineRef} />;
+  return <primitive object={obj} />;
 }
-function BackgroundContent({
-  pointsRef,
-  lines,
-  setLines,
-}: BackgroundContentProps) {
-  const { viewport } = useThree();
-  const groupRef = useRef<Group>(null!);
-  // const linesRef = useRef<LineData[]>([]);
-  const currentLineIndexRef = useRef(0);
 
-  const x_range: [number, number] = [-viewport.width / 2, viewport.width / 2];
-  const y_range: [number, number] = [-viewport.height / 2, viewport.height / 2];
-  const [opacity, setOpacity] = useState(0);
+// ── ClickHandler (inside Canvas for camera access) ────────────────────────────
+
+function ClickHandler({ buildChainRef }: { buildChainRef: React.RefObject<((x: number, y: number, z: number) => void) | null> }) {
+  const { camera } = useThree();
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setOpacity((prev) => {
-        if (prev >= 1) {
-          clearInterval(interval);
-          return 1;
-        }
-        return prev + 0.01;
-      });
-    }, 16);
+    const raycaster = new THREE.Raycaster();
+    const plane    = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    const worldPos = new THREE.Vector3();
+    const ndc      = new THREE.Vector2();
 
-    return () => clearInterval(interval);
+    const handler = (e: MouseEvent) => {
+      ndc.set(
+        (e.clientX / window.innerWidth)  *  2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1
+      );
+      raycaster.setFromCamera(ndc, camera);
+      if (raycaster.ray.intersectPlane(plane, worldPos)) {
+        buildChainRef.current?.(worldPos.x, worldPos.y, worldPos.z);
+      }
+    };
+
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
+  }, [camera, buildChainRef]);
+
+  return null;
+}
+
+// ── RippleOverlay ─────────────────────────────────────────────────────────────
+
+function RippleOverlay() {
+  const [ripples, setRipples] = useState<Ripple[]>([]);
+  const idRef = useRef(0);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const id = idRef.current++;
+      setRipples(p => [...p, { id, x: e.clientX, y: e.clientY }]);
+      setTimeout(() => setRipples(p => p.filter(r => r.id !== id)), 950);
+    };
+    window.addEventListener("click", handler);
+    return () => window.removeEventListener("click", handler);
   }, []);
-  const points = useMemo<BackgroundPointVel[]>(() => {
-    const vels: [number, number][] = [];
-    for (let i = 0; i < POINT_NO; i++) {
-      vels.push([
-        randomInRange(X_VELOCITY_RANGE),
-        randomInRange(Y_VELOCITY_RANGE),
-      ]);
-    }
-
-    return vels.map((v) => ({
-      velocity: v,
-      meshRef: createRef(),
-      position: [
-        randomInRange(x_range),
-        randomInRange(y_range),
-        randomInRange(Z_POS_RANGE),
-      ],
-    })) satisfies BackgroundPointVel[];
-  }, []);
-
-  pointsRef.current = points;
-
-  const backgroundMeshRef = useRef(null);
-
-  useFrame(() => {
-    if (groupRef.current) {
-      if (typeof window !== "undefined") {
-        groupRef.current.position.y = window.scrollY * 0.0001;
-      }
-    }
-  });
-
-  useFrame(() => {
-    let pos;
-    const { width, height } = viewport;
-    for (const point of points) {
-      const mesh = point.meshRef.current;
-      if (!mesh) continue;
-      mesh.position.x += point.velocity[0];
-      mesh.position.y += point.velocity[1];
-      pos = mesh.position;
-      point.position = [pos.x, pos.y, pos.z];
-      if (pos.x < -width / 2 || pos.x > width / 2) {
-        point.velocity[0] *= -1;
-      }
-      if (pos.y < -height / 2 || pos.y > height / 2) {
-        point.velocity[1] *= -1;
-      }
-    }
-  });
-
-  useFrame((_, delta) => {
-    setLines((prevLines) => {
-      const newLines = [...prevLines];
-
-      const currentIndex = currentLineIndexRef.current;
-      if (
-        currentIndex < newLines.length &&
-        newLines[currentIndex].progress >= 1
-      ) {
-        currentLineIndexRef.current += 1;
-      }
-
-      for (let i = 0; i < newLines.length; i++) {
-        const line = newLines[i];
-
-        if (i === currentLineIndexRef.current && line.progress < 1) {
-          line.progress = Math.min(1, line.progress + delta * LINE_SPEED);
-        }
-        if (line.progress >= 1) {
-          line.age += delta;
-
-          if (line.age >= LINE_AGE) {
-            line.opacity = Math.max(0, line.opacity - delta * LINE_FADE_RATE);
-          }
-        }
-      }
-
-      return newLines.filter((line) => line.opacity > 0);
-    });
-  });
 
   return (
-    <group ref={groupRef}>
-      <mesh ref={backgroundMeshRef} position={[0, 0, -3]}>
-        <planeGeometry args={[100, 100]} />
-        <meshBasicMaterial color="black" />
-      </mesh>
-
-      {lines.map((line, i) => (
-        <AnimatedLine key={i} {...line} />
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", zIndex: 9999 }}>
+      {ripples.map(r => (
+        <div key={r.id} style={{ position: "absolute", left: r.x, top: r.y }}>
+          <div className="bg-ripple-ring" />
+          <div className="bg-ripple-ring bg-ripple-ring--b" />
+        </div>
       ))}
-      {points.map((point, index) => (
-        <BackgroundPoint
-          key={index}
-          meshRef={point.meshRef}
-          position={point.position}
-          opacity={opacity}
-        />
-      ))}
-    </group>
+    </div>
   );
 }
 
-function Background() {
-  const pointsRef = useRef<BackgroundPointVel[]>([]);
-  const [lines, setLines] = useState<LineData[]>([]);
+// ── BackgroundContent ─────────────────────────────────────────────────────────
 
-  function buildChain(
-    current: BackgroundPointVel,
-    visited: Set<BackgroundPointVel>,
-    chain: BackgroundPointVel[],
-    depth: number = 0,
-    maxDepth = 20
-  ) {
-    if (!current || visited.has(current) || depth > maxDepth) return;
+function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<((x: number, y: number, z: number) => void) | null> }) {
+  const { viewport } = useThree();
 
-    visited.add(current);
-    chain.push(current);
+  const pointsRef  = useRef<THREE.Points>(null!);
+  const linesRef   = useRef<ActiveLine[]>([]);
+  const lineIdRef  = useRef(0);
+  const fadeOpRef  = useRef(0);
+  const particlesRef = useRef<Particle[]>([]);
 
-    const [x, y, z] = current.position;
+  const [displayLines, setDisplayLines] = useState<ActiveLine[]>([]);
 
-    updateBuckets(pointsRef.current.filter((p) => !visited.has(p)));
+  // ── Particles ───────────────────────────────────────────────────────────────
+  const { particles, posArr, colArr, sizeArr } = useMemo(() => {
+    const w = viewport.width;
+    const h = viewport.height;
+    const pts: Particle[] = [];
+    const posArr  = new Float32Array(POINT_NO * 3);
+    const colArr  = new Float32Array(POINT_NO * 3);
+    const sizeArr = new Float32Array(POINT_NO);
 
-    const next = getNearestPoint(x, y, z, visited);
-    if (next)
-      buildChain(next, visited, chain, depth + 1, randomInRange(CHAIN_RANGE));
-  }
+    for (let i = 0; i < POINT_NO; i++) {
+      const hex   = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+      const isHub = Math.random() < 0.08;
+      const size  = isHub ? 12 + Math.random() * 8 : 3 + Math.random() * 4;
+      const color = new THREE.Color(hex);
+      const angle = Math.random() * Math.PI * 2;
+      const spd   = SPEED * (0.5 + Math.random() * 0.8);
+      const pos   = new THREE.Vector3(
+        (Math.random() - 0.5) * w,
+        (Math.random() - 0.5) * h,
+        Z_RANGE[0] + Math.random() * (Z_RANGE[1] - Z_RANGE[0])
+      );
 
-  function triggerAnimationFromClick(clickPos: THREE.Vector3) {
-    const visited = new Set<BackgroundPointVel>();
-    const chain: BackgroundPointVel[] = [];
+      pts.push({
+        pos,
+        vel: new THREE.Vector2(Math.cos(angle) * spd, Math.sin(angle) * spd),
+        color,
+        hex,
+        size,
+      });
 
-    updateBuckets(pointsRef.current);
-    console.log(clickPos);
-    const start = getNearestPoint(clickPos.x, clickPos.y, clickPos.z);
+      posArr[i * 3]     = pos.x;
+      posArr[i * 3 + 1] = pos.y;
+      posArr[i * 3 + 2] = pos.z;
+      colArr[i * 3]     = color.r;
+      colArr[i * 3 + 1] = color.g;
+      colArr[i * 3 + 2] = color.b;
+      sizeArr[i]        = size;
+    }
+    return { particles: pts, posArr, colArr, sizeArr };
+  }, [viewport.width, viewport.height]);
 
-    if (!start) return;
+  particlesRef.current = particles;
 
-    buildChain(start, visited, chain);
+  // ── Geometry & material ──────────────────────────────────────────────────────
+  const geometry = useMemo(() => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position",      new THREE.BufferAttribute(posArr,  3));
+    g.setAttribute("particleColor", new THREE.BufferAttribute(colArr,  3));
+    g.setAttribute("size",          new THREE.BufferAttribute(sizeArr, 1));
+    return g;
+  }, [posArr, colArr, sizeArr]);
 
-    animateChain(chain, setLines);
-  }
-  // setInterval(() => {
-  //   const visited = new Set<BackgroundPointVel>();
-  //   const chain: BackgroundPointVel[] = [];
-  //   updateBuckets(pointsRef.current);
-  //   const start = pointsRef.current[Math.floor(Math.random() * pointsRef.current.length)]
-  //   if (!start) return;
-  //   buildChain(start, visited, chain);
-  //   animateChain(chain, setLines);
-  // }, 20000)
+  const shaderMat = useMemo(() => new THREE.ShaderMaterial({
+    uniforms:       { opacity: { value: 0 } },
+    vertexShader:   VERT,
+    fragmentShader: FRAG,
+    transparent:    true,
+    blending:       THREE.AdditiveBlending,
+    depthWrite:     false,
+  }), []);
+
+  // ── Chain builder ────────────────────────────────────────────────────────────
+  const buildChain = useCallback((startX: number, startY: number, startZ: number) => {
+    const pts = particlesRef.current;
+    if (!pts.length) return;
+
+    // Build buckets once for the whole chain traversal
+    const buckets = buildBuckets(pts);
+    const visited = new Set<number>();
+    const pairs: [number, number, string][] = [];
+
+    // Find nearest particle to click position
+    const startVec = new THREE.Vector3(startX, startY, startZ);
+    const startCands = getCandidates(buckets, startX, startY, startZ);
+    if (!startCands.length) return;
+
+    let startIdx = startCands[0];
+    let minD = Infinity;
+    for (const idx of startCands) {
+      const d = pts[idx].pos.distanceToSquared(startVec);
+      if (d < minD) { minD = d; startIdx = idx; }
+    }
+
+    visited.add(startIdx);
+    let curIdx = startIdx;
+    const maxDepth = CHAIN_MAX_DEPTH + Math.floor(Math.random() * 12);
+
+    for (let depth = 0; depth < maxDepth; depth++) {
+      const cur = pts[curIdx];
+      const nearby = getCandidates(buckets, cur.pos.x, cur.pos.y, cur.pos.z)
+        .filter(idx => !visited.has(idx) && pts[idx].pos.distanceToSquared(cur.pos) < MAX_DIST_SQ)
+        .sort((a, b) => pts[a].pos.distanceToSquared(cur.pos) - pts[b].pos.distanceToSquared(cur.pos));
+
+      if (!nearby.length) break;
+
+      // Pick from top 3 nearest for organic feel instead of strict greedy
+      const nextIdx = nearby[Math.floor(Math.random() * Math.min(3, nearby.length))];
+      pairs.push([curIdx, nextIdx, cur.hex]);
+      visited.add(nextIdx);
+      curIdx = nextIdx;
+    }
+
+    const newLines: ActiveLine[] = pairs.map(([from, to, hex], i) => ({
+      id:      lineIdRef.current++,
+      fromIdx: from,
+      toIdx:   to,
+      hex,
+      anim:    { progress: 0, opacity: 1, age: 0, delay: i * LINE_STAGGER },
+    }));
+
+    linesRef.current = [...linesRef.current, ...newLines];
+    setDisplayLines([...linesRef.current]);
+  }, []);
+
+  buildChainRef.current = buildChain;
+
+  // ── Auto chains ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const fire = () => {
+      const pts = particlesRef.current;
+      if (!pts.length) return;
+      const rand = pts[Math.floor(Math.random() * pts.length)];
+      buildChain(rand.pos.x, rand.pos.y, rand.pos.z);
+    };
+    const init = setTimeout(fire, 1200);
+    const id   = setInterval(fire, AUTO_CHAIN_MS);
+    return () => { clearTimeout(init); clearInterval(id); };
+  }, [buildChain]);
+
+  // ── Fade in ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let raf: number;
+    const tick = () => {
+      fadeOpRef.current = Math.min(1, fadeOpRef.current + 0.012);
+      if (fadeOpRef.current < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // ── Per-frame: physics + line animation ──────────────────────────────────────
+  useFrame((_, delta) => {
+    const hw = viewport.width  / 2;
+    const hh = viewport.height / 2;
+    const pts = particlesRef.current;
+    const posAttr = pointsRef.current?.geometry.attributes.position;
+
+    // Move particles
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      p.pos.x += p.vel.x;
+      p.pos.y += p.vel.y;
+      if (p.pos.x < -hw || p.pos.x > hw) p.vel.x *= -1;
+      if (p.pos.y < -hh || p.pos.y > hh) p.vel.y *= -1;
+      if (posAttr) {
+        (posAttr.array as Float32Array)[i * 3]     = p.pos.x;
+        (posAttr.array as Float32Array)[i * 3 + 1] = p.pos.y;
+        (posAttr.array as Float32Array)[i * 3 + 2] = p.pos.z;
+      }
+    }
+    if (posAttr) posAttr.needsUpdate = true;
+
+    // Fade in shader
+    shaderMat.uniforms.opacity.value = fadeOpRef.current;
+
+    // Tick line animations (mutate in place — no React state per frame)
+    let hasExpired = false;
+    for (const line of linesRef.current) {
+      if (line.anim.delay > 0) {
+        line.anim.delay -= delta;
+        continue;
+      }
+      if (line.anim.progress < 1) {
+        line.anim.progress = Math.min(1, line.anim.progress + delta * LINE_DRAW_SPEED);
+      } else {
+        line.anim.age += delta;
+        if (line.anim.age > LINE_AGE) {
+          line.anim.opacity = Math.max(0, line.anim.opacity - delta * LINE_FADE_RATE);
+          if (line.anim.opacity <= 0) hasExpired = true;
+        }
+      }
+    }
+
+    if (hasExpired) {
+      linesRef.current = linesRef.current.filter(l => l.anim.opacity > 0);
+      setDisplayLines([...linesRef.current]);
+    }
+  });
+
   return (
-    <Canvas
-      camera={{ position: [0, 0, 5], fov: 75 }}
-      style={{ pointerEvents: "auto", zIndex: 0 }}
-    >
-      <mesh
-        position={[0, 0, 0.1]}
-        renderOrder={-1}
-        onPointerDown={(e) => triggerAnimationFromClick(e.point)}
-      >
-        <planeGeometry args={[100, 100]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+    <>
+      <mesh position={[0, 0, -5]}>
+        <planeGeometry args={[300, 300]} />
+        <meshBasicMaterial color={BG_COLOR} />
       </mesh>
-      <BackgroundContent
-        pointsRef={pointsRef}
-        lines={lines}
-        setLines={setLines}
-      />
-    </Canvas>
+
+      <points ref={pointsRef} geometry={geometry} material={shaderMat} />
+
+      {displayLines.map(line => (
+        <AnimatedLine key={line.id} line={line} particlesRef={particlesRef} />
+      ))}
+    </>
+  );
+}
+
+// ── Background (main export) ──────────────────────────────────────────────────
+
+function Background() {
+  const buildChainRef = useRef<((x: number, y: number, z: number) => void) | null>(null);
+
+  return (
+    <>
+      <RippleOverlay />
+      <Canvas camera={{ position: [0, 0, 5], fov: 75 }} style={{ width: "100%", height: "100%" }}>
+        <BackgroundContent buildChainRef={buildChainRef} />
+        <ClickHandler     buildChainRef={buildChainRef} />
+      </Canvas>
+    </>
   );
 }
 
