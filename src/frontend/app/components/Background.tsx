@@ -297,9 +297,6 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
     const maxDepth = Math.ceil(Math.random() * CHAIN_MAX_DEPTH);
 
     for (let depth = 0; depth < maxDepth; depth++) {
-      // Randomly break the chain early for less predictable patterns
-      if (depth > 3 && Math.random() < 0.18) break;
-
       const cur = pts[curIdx];
       const nearby = getCandidates(buckets, cur.pos.x, cur.pos.y, cur.pos.z)
         .filter(idx => !visited.has(idx) && pts[idx].pos.distanceToSquared(cur.pos) < MAX_DIST_SQ)
