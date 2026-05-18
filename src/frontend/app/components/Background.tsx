@@ -5,11 +5,11 @@ import * as THREE from "three";
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const POINT_NO         = 200;
-const SPEED            = 0.00065;
+const SPEED            = 0.00025;
 const Z_RANGE: [number, number] = [-1, 2];
 const MAX_DIST_SQ      = 3.2 * 3.2;
 const CHAIN_MAX_DEPTH  = 14;
-const LINE_DRAW_SPEED  = 6;
+const LINE_DRAW_SPEED  = 3.5;
 const LINE_STAGGER     = 0.06;
 const LINE_AGE         = 8;
 const LINE_FADE_RATE   = 0.5;
@@ -17,16 +17,16 @@ const AUTO_CHAIN_MS    = 11000;
 const BUCKET_SIZE      = 1.8;
 const BG_COLOR         = "#050b14";
 
-// Mostly white/pale — only a faint blue-teal accent
+// Mostly white/pale with subtle colour accents
 const PALETTE = [
   "#ffffff",
   "#ffffff",
-  "#ffffff",
-  "#dce8ff", // very pale blue-white
-  "#dce8ff",
-  "#b8d4f0", // soft blue-grey
-  "#9ec8e8", // muted sky
-  "#cce0f5", // near-white blue
+  "#dce8ff", // pale blue-white
+  "#a8d8f0", // soft sky blue
+  "#b8a0e8", // muted lavender
+  "#8ecfcc", // desaturated teal
+  "#f0c8e8", // very pale pink
+  "#a0c8f8", // light blue
 ];
 
 // ── Types ─────────────────────────────────────────────────────────────────────
