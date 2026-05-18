@@ -202,6 +202,7 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
   const { viewport } = useThree();
 
   const pointsRef  = useRef<THREE.Points>(null!);
+  const groupRef   = useRef<THREE.Group>(null!);
   const linesRef   = useRef<ActiveLine[]>([]);
   const lineIdRef  = useRef(0);
   const fadeOpRef  = useRef(0);
@@ -371,6 +372,11 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
     }
     if (posAttr) posAttr.needsUpdate = true;
 
+    // Scroll parallax
+    if (groupRef.current) {
+      groupRef.current.position.y = window.scrollY * 0.0001;
+    }
+
     // Fade in shader
     shaderMat.uniforms.opacity.value = fadeOpRef.current;
 
@@ -405,11 +411,13 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
         <meshBasicMaterial color={BG_COLOR} />
       </mesh>
 
-      <points ref={pointsRef} geometry={geometry} material={shaderMat} />
+      <group ref={groupRef}>
+        <points ref={pointsRef} geometry={geometry} material={shaderMat} />
 
-      {displayLines.map(line => (
-        <AnimatedLine key={line.id} line={line} particlesRef={particlesRef} />
-      ))}
+        {displayLines.map(line => (
+          <AnimatedLine key={line.id} line={line} particlesRef={particlesRef} />
+        ))}
+      </group>
     </>
   );
 }
