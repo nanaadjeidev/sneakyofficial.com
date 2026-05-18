@@ -100,7 +100,7 @@ class DiscordOauthHandler(OauthBase):
                         )
                     response = web.HTTPFound("/authorised")
                     response.set_cookie("discord_user_id", str(
-                        user_id), httponly=True, secure=global_config.secured, samesite="Lax", domain=".sneakyofficial.com")
+                        user_id), httponly=True, secure=global_config.secured, samesite="Lax", max_age=86400 * 30, domain=".sneakyofficial.com")
                     response.set_cookie("discord_access_token", access_token, httponly=True,
                                         secure=global_config.secured, samesite="Lax", max_age=3600, domain=".sneakyofficial.com")
                     response.set_cookie("discord_refresh_token", refresh_token, httponly=True,

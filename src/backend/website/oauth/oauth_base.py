@@ -273,25 +273,38 @@ class OauthBase:
         if not new_access_token:
             return web.json_response({"error": "Invalid refresh token"}, status=401)
 
-        # Create response
+        user_id = request.cookies.get(f"{self._platform_name}_user_id")
+
         response = web.json_response({"success": True})
 
-        # Update cookies
         response.set_cookie(
             f"{self._platform_name}_access_token",
             new_access_token,
             httponly=True,
             secure=global_config.secured,
             samesite="Lax",
-            max_age=3600
+            max_age=3600,
+            domain=".sneakyofficial.com",
         )
-        response.set_cookie(f"{self._platform_name}_refresh_token",
-                            new_refresh_token,
-                            httponly=True,
-                            secure=global_config.secured,
-                            samesite="Lax",
-                            max_age=86400 * 7
-                            )
+        response.set_cookie(
+            f"{self._platform_name}_refresh_token",
+            new_refresh_token,
+            httponly=True,
+            secure=global_config.secured,
+            samesite="Lax",
+            max_age=86400 * 7,
+            domain=".sneakyofficial.com",
+        )
+        if user_id:
+            response.set_cookie(
+                f"{self._platform_name}_user_id",
+                user_id,
+                httponly=True,
+                secure=global_config.secured,
+                samesite="Lax",
+                max_age=86400 * 30,
+                domain=".sneakyofficial.com",
+            )
 
         return response
 
