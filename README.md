@@ -1,6 +1,10 @@
 # sneakyofficial.com
 
-The source code for [**sneakyofficial.com**](https://sneakyofficial.com). A personal portfolio, Splatoon weapon scraper, and full-stack showcase rolled into one. Built by **Nana Adjei** (me). React frontend, async Python backend, and some well-seasoned scraping logic.
+---
+
+# sneakyofficial.com
+
+The source code for [**sneakyofficial.com**](https://sneakyofficial.com) — a personal portfolio, Splatoon weapon scraper, and full-stack showcase all rolled into one. Built by **Nana Adjei** (that's me, hi), this repo features a sleek React frontend, an async Python backend, and some delicious scraping sauce on the side.
 
 ---
 
@@ -12,8 +16,8 @@ The source code for [**sneakyofficial.com**](https://sneakyofficial.com). A pers
 * **TypeScript + Vite**
 * **Tailwind CSS**
 * **React Router**
-* 3D elements via `@react-three/fiber` and animated components
-* Production build outputs to `dist/`, served with `nginx`
+* Some 3D with `@react-three/fiber` + cool animated components
+* Built assets live in `dist/`, deployed via `nginx`
 
 ### Backend (`src/backend`)
 
@@ -28,11 +32,11 @@ The source code for [**sneakyofficial.com**](https://sneakyofficial.com). A pers
 ## Project Features
 
 * Live-rendered portfolio with animated sections
-* **Splatdle**, a Wordle-style game based on Splatoon weapons
-* Discord OAuth2 authentication
-* REST API built from scratch with `aiohttp`
-* Web scrapers to keep weapon data up to date
-* Clear separation between frontend, backend, and data layers
+* Splatdle — a custom Wordle-style game based on Splatoon weapons
+* OAuth2 login with Discord
+* REST API built from scratch using `aiohttp`
+* Web scrapers to keep weapon data fresh
+* Clean separation between frontend, backend, and data resources
 
 ---
 
@@ -79,7 +83,7 @@ API endpoints are available under `/api/*` (e.g. `/api/splatdle`).
 
 ---
 
-## Directory Tree (important bits)
+## Directory Tree (important bits only)
 
 ```bash
 .
@@ -100,7 +104,7 @@ API endpoints are available under `/api/*` (e.g. `/api/splatdle`).
 
 ---
 
-## Useful Scripts
+## Scripts You Might Care About
 
 ```bash
 # Build frontend and copy output to backend
@@ -130,15 +134,15 @@ python splatkeyfixer.py
 
 ---
 
-## Deployment
+## Deployed With
 
-* **Nginx** for static hosting and reverse proxy
-* **Let’s Encrypt** via Certbot for HTTPS
+* **Nginx** (static + reverse proxy)
+* **Let's Encrypt** via Certbot (HTTPS, free SSL)
 * **Ubuntu VPS**, manually configured
 
 ---
 
-## Contact
+## Contact Me
 
 Want to collaborate, give feedback, or report a bug that ruined your Splatdle streak?
 
@@ -148,6 +152,6 @@ Want to collaborate, give feedback, or report a bug that ruined your Splatdle st
 
 ---
 
-> “Stay fresh.”
-> Still applies to codebases.
+### Bonus
 
+> "Stay fresh." – Callie & Marie (probably also about code hygiene)

@@ -89,22 +89,22 @@ class DiscordOauthHandler(OauthBase):
                         await cur.execute(
                             """
                             INSERT INTO UserTokens (discord_id, access_token, refresh_token, expires_at)
-                            VALUES (%s, %s, %s, %s)
+                            VALUES (%s, %s, %s, %s) AS new
                             ON DUPLICATE KEY UPDATE
-                                access_token = VALUES(access_token),
-                                refresh_token = VALUES(refresh_token),
-                                expires_at = VALUES(expires_at)
+                                access_token = new.access_token,
+                                refresh_token = new.refresh_token,
+                                expires_at = new.expires_at
                             """,
                             (int(user_id), access_token,
                              refresh_token, int(expires_at))
                         )
                     response = web.HTTPFound("/authorised")
                     response.set_cookie("discord_user_id", str(
-                        user_id), httponly=True, secure=global_config.secured, samesite="Lax")
+                        user_id), httponly=True, secure=global_config.secured, samesite="Lax", domain=".sneakyofficial.com")
                     response.set_cookie("discord_access_token", access_token, httponly=True,
-                                        secure=global_config.secured, samesite="Lax", max_age=3600)
+                                        secure=global_config.secured, samesite="Lax", max_age=3600, domain=".sneakyofficial.com")
                     response.set_cookie("discord_refresh_token", refresh_token, httponly=True,
-                                        secure=global_config.secured, samesite="Lax", max_age=86400 * 7)
+                                        secure=global_config.secured, samesite="Lax", max_age=86400 * 7, domain=".sneakyofficial.com")
                     logger.debug(
                         "%s has authorised via Discord Oauth2", user_id)
 
@@ -139,7 +139,8 @@ class DiscordOauthHandler(OauthBase):
         """Check if the user is authenticated and return their status.
 
         Validates the access token and returns user information along
-        with their Splatdle statistics if available.
+        with their Splatdle statistics if available. Deletes invalid cookies
+        when Discord API returns an error.
 
         Args:
             request: The request containing authentication cookies.
@@ -148,12 +149,22 @@ class DiscordOauthHandler(OauthBase):
             JSON response with authentication status and user data.
         """
         access_token = request.cookies.get("discord_access_token")
+        print(request.cookies)
         logger.debug("Checking discord auth status...")
         if not access_token:
             logger.debug("Rejected because there is no discord access token")
             return web.json_response({"logged_in": False}, status=401)
 
         user_data = await self.get_user_info(access_token)
+        
+        if not user_data:
+            logger.debug("Invalid access token, clearing Discord cookies")
+            response = web.json_response({"logged_in": False}, status=401)
+            response.del_cookie("discord_access_token", domain=".sneakyofficial.com")
+            response.del_cookie("discord_refresh_token", domain=".sneakyofficial.com")
+            response.del_cookie("discord_user_id", domain=".sneakyofficial.com")
+            return response
+
         async with DBContextManager() as cur:
             await cur.execute(
                 "SELECT discord_id, streak, times_played, average_guess_count FROM UserStats WHERE discord_id = %s",
@@ -180,8 +191,5 @@ class DiscordOauthHandler(OauthBase):
                 "avatar": user_data.get("avatar"),
                 "username": None
             }
-        if user_data:
-            return web.json_response({"logged_in": True, "player": player_data})
-
-        logger.debug("Rejected because there is no discord user data")
-        return web.json_response({"logged_in": False}, status=401)
+        
+        return web.json_response({"logged_in": True, "player": player_data})

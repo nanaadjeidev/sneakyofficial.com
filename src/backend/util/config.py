@@ -73,6 +73,43 @@ class Config:
         self.error_log_channel = getenv("ERROR_LOG_CHANNEL")
 
 
+class ScannerErrorFilter(logging.Filter):
+    """Filter to suppress harmless errors from malicious bots/scanners.
+
+    Filters out error logs from invalid HTTP methods that are just
+    scanner/bot traffic (SSL handshakes, Redis/Memcached probes, etc).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Filter out scanner-related errors.
+
+        Args:
+            record: The log record to filter.
+
+        Returns:
+            False if the record should be filtered out, True otherwise.
+        """
+        if record.levelno == logging.ERROR and 'Error handling request' in record.getMessage():
+            return False
+
+        # Filter known scanner patterns
+        msg = record.getMessage()
+        scanner_patterns = [
+            'BadStatusLine',
+            'BadHttpMessage',
+            'Invalid method encountered',
+            b'\x16\x03\x01'.decode('latin1', errors='ignore'),  # SSL handshake
+            'MGLNDD',  # Memcached scanner
+            'HELP',  # Redis scanner
+        ]
+
+        for pattern in scanner_patterns:
+            if pattern in msg:
+                return False
+
+        return True
+
+
 def setup_logging() -> None:
     """Set up application logging configuration.
 
@@ -97,6 +134,10 @@ def setup_logging() -> None:
     logging.getLogger('asyncio').setLevel(logging.WARNING)
     logging.getLogger('aiohttp.access').setLevel(logging.INFO)
     logging.getLogger('aiomysql').setLevel(logging.INFO)
+
+    # Add filter to suppress scanner/bot errors
+    scanner_filter = ScannerErrorFilter()
+    logging.getLogger('aiohttp.server').addFilter(scanner_filter)
 
 
 load_dotenv()

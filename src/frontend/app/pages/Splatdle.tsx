@@ -493,7 +493,7 @@ const Splatdle = () => {
           guess.weapon.name == correctWeapon.name && guess.weapon.game == guess.weapon.game ? "🟢" : "🔴",
           guess.weapon.class === correctWeapon.class ? "🟢" : "🔴",
           guess.weapon.range === -1 || correctWeapon.range === -1
-            ? "⚫"
+            ? "🔴"
             : Math.abs(guess.weapon.range - correctWeapon.range) === 0
             ? "🟢"
             : Math.abs(guess.weapon.range - correctWeapon.range) <= 10
@@ -510,7 +510,7 @@ const Splatdle = () => {
 
     return `🦑 SPLATDLE 🐙\nGuessed in ${guessCount} ${
       guessCount === 1 ? "try" : "tries"
-    }!\n\n${emojis}\n\nPlay at: https://www.sneakyofficial.com/splatdle`;
+    }!\n\n||\n${emojis}\n||\n\nPlay at: https://www.sneakyofficial.com/splatdle`;
   };
 
   // Copy results to clipboard

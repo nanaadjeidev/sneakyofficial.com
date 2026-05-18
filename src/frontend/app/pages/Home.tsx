@@ -18,19 +18,19 @@ const HomePage = () => {
       text: "<Develops/>", 
       colour: "#00ff88", 
       component: TypewriterText,
-      duration: 5000 // Longer to account for delete animation
+      duration: 5000 
     },
     { 
       text: "Creates Content", 
       colour: "#ff6b6b", 
       component: SlideInText,
-      duration: 4000 // Longer for exit animation
+      duration: 4000 
     },
     { 
       text: "Makes Music", 
       colour: "#4ecdc4", 
       component: WaveText,
-      duration: 4000 // Longer for smooth wave cycles
+      duration: 4000 
     }
   ], []);
 

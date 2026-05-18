@@ -9,7 +9,7 @@ import uuid
 from typing import Optional
 
 import interactions
-from interactions import slash_command
+from interactions import slash_command, slash_option, slash_default_member_permission, OptionType, Permissions
 from interactions.api.events import CommandError, CommandCompletion, Startup
 from backend.util import global_config
 from version import __version__
@@ -212,6 +212,71 @@ class DevTools(interactions.Extension):
         """
         logger.info("Command '%s' executed by %s (ID: %s)",
                     event.ctx.command.name, event.ctx.author.username, event.ctx.author_id)
+
+    @slash_command(
+        name="clear-category",
+        description="Clear all channels from a category"
+    )
+    @slash_default_member_permission(Permissions.ADMINISTRATOR)
+    @slash_option(
+        name="category",
+        description="The category to clear channels from",
+        required=True,
+        opt_type=OptionType.CHANNEL
+    )
+    async def clear_category(self, ctx: interactions.SlashContext, category: interactions.GuildChannel) -> None:
+        """
+        Clear all channels from a category
+
+        Parameters:
+        - ctx: The context of the command.
+        - category: The category to clear channels from.
+
+        Returns:
+        - None
+
+        Description:
+        This command deletes all channels within a specified category.
+        Requires administrator permissions.
+
+        Example usage:
+        /clear-category category:<category_name>
+        """
+        if category.type != interactions.ChannelType.GUILD_CATEGORY:
+            await ctx.send("❌ Please select a valid category channel.", ephemeral=True)
+            return
+
+        await ctx.defer(ephemeral=False)
+
+        # Get all channels in the category
+        channels_to_delete = [
+            channel for channel in ctx.guild.channels
+            if hasattr(channel, 'parent_id') and channel.parent_id == category.id
+        ]
+
+        if not channels_to_delete:
+            await ctx.send(f"❌ No channels found in category **{category.name}**.")
+            return
+
+        # Delete all channels
+        deleted_count = 0
+        failed_count = 0
+
+        for channel in channels_to_delete:
+            try:
+                await channel.delete()
+                deleted_count += 1
+                logger.info(f"Deleted channel {channel.name} (ID: {channel.id}) from category {category.name}")
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Failed to delete channel {channel.name}: {e}")
+
+        # Send summary
+        result_message = f"✅ Deleted **{deleted_count}** channel(s) from category **{category.name}**"
+        if failed_count > 0:
+            result_message += f"\n⚠️ Failed to delete **{failed_count}** channel(s)"
+
+        await ctx.send(result_message)
 
     @interactions.listen(Startup)
     async def assign_channel(self) -> None:

@@ -78,12 +78,22 @@ const LifeTimeline = () => {
   {
     id: 7,
     year: "2025",
-    title: "Still Placing, Still Cooking",
+    title: "Placement Year Complete",
     location: "MarineAI",
-    description: "Currently completing my placement year and prepping for final year.",
+    description: "Completed placement year at MarineAI working on production systems.",
     image: "/Marine AI title.jpg",
-    details: "Wrapping up my internship and getting ready to enter final year at uni—more projects, more coffee, more chaos incoming.",
+    details: "Wrapped up my internship at MarineAI, gaining hands-on experience with C++, Python, Docker, Kubernetes, and real-world robotics systems.",
     icon: "⚙️"
+  },
+  {
+    id: 8,
+    year: "2025-2026",
+    title: "Final Year at Portsmouth",
+    location: "University of Portsmouth",
+    description: "Currently in final year working on cutting-edge projects.",
+    image: "/portsmouth.jpg",
+    details: "Building an Esports Society Manager for my final year project—a full-stack platform to manage university esports societies. Taking Complex Problem Solving (MoD), Robotics, and Artificial Intelligence modules while preparing for graduation.",
+    icon: "🎓"
   }
 ];
 

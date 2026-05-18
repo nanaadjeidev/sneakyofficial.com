@@ -3,14 +3,15 @@ devtools.py
 """
 import logging
 from typing import Optional
+from datetime import datetime, timedelta
 
 import interactions
-from interactions import slash_command, slash_option, OptionType, Permissions, slash_default_member_permission
+from interactions import slash_command, slash_option, OptionType, Permissions, slash_default_member_permission, Task, IntervalTrigger, listen
 from backend.util.database_context_manager import DBContextManager
 from backend.util.config import global_config
 from interactions.ext.paginators import Paginator
 
-logger = logging.getLogger("OCE-4Mans")
+logger = logging.getLogger("Splatdle")
 
 
 class SplatdleExt(interactions.Extension):
@@ -32,6 +33,12 @@ class SplatdleExt(interactions.Extension):
         """
         self.bot = bot
         self.error_log_channel: Optional[interactions.GuildChannel] = None
+
+    @listen()
+    async def on_startup(self) -> None:
+        """Start background tasks when the bot is ready."""
+        self.check_and_send_reminders.start()
+        logger.info("Splatdle reminder task started")
 
     @slash_command(
         name="splatdle-leaderboard",
@@ -284,9 +291,9 @@ class SplatdleExt(interactions.Extension):
         async with DBContextManager() as cur:
             await cur.execute(
                 "INSERT INTO SplatdleChannels (guild_id, channel_id) "
-                "VALUES (%s, %s) "
+                "VALUES (%s, %s) AS new "
                 "ON DUPLICATE KEY UPDATE "
-                "channel_id = VALUES(channel_id)",
+                "channel_id = new.channel_id",
                 (ctx.guild.id, splatdle_channel.id)
             )
         await ctx.send("✅ Updated the channel")
@@ -315,6 +322,301 @@ class SplatdleExt(interactions.Extension):
             row = await cur.fetchone()
         channel_id = row[0]
         await ctx.send(f"The splatdle announcement channel is set to <#{channel_id}>")
+
+    @slash_command(
+        name="splatdle-reminder",
+        description="Configure your Splatdle streak reminder settings"
+    )
+    @slash_option(
+        name="enabled",
+        description="Enable or disable reminders",
+        opt_type=OptionType.BOOLEAN,
+        required=False
+    )
+    @slash_option(
+        name="hours_before_reset",
+        description="When to send reminder (time in UTC)",
+        opt_type=OptionType.INTEGER,
+        required=False,
+        choices=[
+            interactions.SlashCommandChoice(name="0:00 UTC (24 hours before)", value=24),
+            interactions.SlashCommandChoice(name="1:00 UTC (23 hours before)", value=23),
+            interactions.SlashCommandChoice(name="2:00 UTC (22 hours before)", value=22),
+            interactions.SlashCommandChoice(name="3:00 UTC (21 hours before)", value=21),
+            interactions.SlashCommandChoice(name="4:00 UTC (20 hours before)", value=20),
+            interactions.SlashCommandChoice(name="5:00 UTC (19 hours before)", value=19),
+            interactions.SlashCommandChoice(name="6:00 UTC (18 hours before)", value=18),
+            interactions.SlashCommandChoice(name="7:00 UTC (17 hours before)", value=17),
+            interactions.SlashCommandChoice(name="8:00 UTC (16 hours before)", value=16),
+            interactions.SlashCommandChoice(name="9:00 UTC (15 hours before)", value=15),
+            interactions.SlashCommandChoice(name="10:00 UTC (14 hours before)", value=14),
+            interactions.SlashCommandChoice(name="11:00 UTC (13 hours before)", value=13),
+            interactions.SlashCommandChoice(name="12:00 UTC (12 hours before)", value=12),
+            interactions.SlashCommandChoice(name="13:00 UTC (11 hours before)", value=11),
+            interactions.SlashCommandChoice(name="14:00 UTC (10 hours before)", value=10),
+            interactions.SlashCommandChoice(name="15:00 UTC (9 hours before)", value=9),
+            interactions.SlashCommandChoice(name="16:00 UTC (8 hours before)", value=8),
+            interactions.SlashCommandChoice(name="17:00 UTC (7 hours before)", value=7),
+            interactions.SlashCommandChoice(name="18:00 UTC (6 hours before)", value=6),
+            interactions.SlashCommandChoice(name="19:00 UTC (5 hours before)", value=5),
+            interactions.SlashCommandChoice(name="20:00 UTC (4 hours before)", value=4),
+            interactions.SlashCommandChoice(name="21:00 UTC (3 hours before)", value=3),
+            interactions.SlashCommandChoice(name="22:00 UTC (2 hours before)", value=2),
+            interactions.SlashCommandChoice(name="23:00 UTC (1 hour before)", value=1),
+        ]
+    )
+    async def splatdle_reminder(
+        self,
+        ctx: interactions.SlashContext,
+        enabled: Optional[bool] = None,
+        hours_before_reset: Optional[int] = None
+    ) -> None:
+        """Configure Splatdle reminder settings.
+
+        Allows users to enable/disable reminders and set when they want to be reminded
+        before the daily weapon reset.
+
+        Args:
+            ctx: The slash command context.
+            enabled: Whether to enable reminders.
+            hours_before_reset: How many hours before reset to send the reminder.
+        """
+        user_id = ctx.author.id
+
+        try:
+            # If no options provided, show current settings
+            if enabled is None and hours_before_reset is None:
+                async with DBContextManager(use_dict=True) as cur:
+                    await cur.execute(
+                        "SELECT reminders_enabled, hours_before_reset FROM SplatdleReminders WHERE discord_id = %s",
+                        (user_id,)
+                    )
+                    record = await cur.fetchone()
+
+                if record:
+                    status = "✅ Enabled" if record['reminders_enabled'] else "❌ Disabled"
+                    embed = interactions.Embed(
+                        title="🔔 Your Splatdle Reminder Settings",
+                        description=(
+                            f"**Status:** {status}\n"
+                            f"**Reminder Time:** {record['hours_before_reset']} hour{'s' if record['hours_before_reset'] != 1 else ''} before reset"
+                        ),
+                        color=global_config.theme_colour
+                    )
+                    embed.set_footer(text="Use /splatdle-reminder to change your settings")
+                else:
+                    embed = interactions.Embed(
+                        title="🔔 Splatdle Reminders",
+                        description=(
+                            "You don't have any reminder settings yet!\n\n"
+                            "**Default settings:**\n"
+                            "• Enabled: ✅ Yes\n"
+                            "• Reminder Time: 2 hours before reset\n\n"
+                            "Use `/splatdle-reminder enabled:True` to enable reminders."
+                        ),
+                        color=global_config.theme_colour
+                    )
+                await ctx.send(embed=embed)
+                return
+
+            # Update settings
+            async with DBContextManager() as cur:
+                # Insert or update
+                if enabled is not None and hours_before_reset is not None:
+                    await cur.execute(
+                        """
+                        INSERT INTO SplatdleReminders (discord_id, reminders_enabled, hours_before_reset)
+                        VALUES (%s, %s, %s) AS new
+                        ON DUPLICATE KEY UPDATE
+                            reminders_enabled = new.reminders_enabled,
+                            hours_before_reset = new.hours_before_reset,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, enabled, hours_before_reset)
+                    )
+                elif enabled is not None:
+                    await cur.execute(
+                        """
+                        INSERT INTO SplatdleReminders (discord_id, reminders_enabled)
+                        VALUES (%s, %s) AS new
+                        ON DUPLICATE KEY UPDATE
+                            reminders_enabled = new.reminders_enabled,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, enabled)
+                    )
+                elif hours_before_reset is not None:
+                    await cur.execute(
+                        """
+                        INSERT INTO SplatdleReminders (discord_id, hours_before_reset)
+                        VALUES (%s, %s) AS new
+                        ON DUPLICATE KEY UPDATE
+                            hours_before_reset = new.hours_before_reset,
+                            updated_at = CURRENT_TIMESTAMP
+                        """,
+                        (user_id, hours_before_reset)
+                    )
+
+            # Build response message
+            response_parts = []
+            if enabled is not None:
+                status = "enabled" if enabled else "disabled"
+                response_parts.append(f"Reminders {status}")
+            if hours_before_reset is not None:
+                response_parts.append(f"reminder time set to {hours_before_reset} hour{'s' if hours_before_reset != 1 else ''} before reset")
+
+            await ctx.send(f"✅ {' and '.join(response_parts)}!")
+
+        except Exception as e:
+            logger.error(f"Error in splatdle_reminder command: {e}")
+            await ctx.send("❌ An error occurred while updating your reminder settings.")
+
+    @Task.create(IntervalTrigger(minutes=30))
+    async def check_and_send_reminders(self) -> None:
+        """Background task to check and send Splatdle reminders.
+
+        Runs every 30 minutes to check if any users need to be reminded
+        about their Splatdle streak.
+        """
+        try:
+            current_time = datetime.utcnow()
+            logger.info(f"Checking for Splatdle reminders to send at {current_time}")
+
+            # Get users who have reminders enabled and haven't played today
+            async with DBContextManager(use_dict=True) as cur:
+                # Get users who need reminders
+                # We check if they haven't played today and if it's time to remind them
+                await cur.execute("""
+                    SELECT
+                        r.discord_id,
+                        r.hours_before_reset,
+                        r.last_reminder_sent,
+                        s.played_today,
+                        s.streak
+                    FROM SplatdleReminders r
+                    LEFT JOIN UserStats s ON r.discord_id = s.discord_id
+                    WHERE r.reminders_enabled = TRUE
+                """)
+                users = await cur.fetchall()
+
+            logger.info(f"Found {len(users)} users with reminders enabled")
+
+            for user_data in users:
+                user_id = user_data['discord_id']
+                hours_before = user_data['hours_before_reset']
+                last_sent = user_data['last_reminder_sent']
+                played_today = user_data.get('played_today', False)
+                streak = user_data.get('streak', 0)
+
+                logger.info(f"Processing user {user_id}: played_today={played_today}, hours_before={hours_before}, last_sent={last_sent}")
+
+                # Skip if already played today
+                if played_today:
+                    logger.info(f"User {user_id} already played today, skipping reminder")
+                    continue
+
+                # Calculate when we should send the reminder (hours before midnight UTC)
+                # Splatdle resets at midnight UTC
+                next_reset = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+
+                reminder_time = next_reset - timedelta(hours=hours_before)
+
+                # Check if we're in the reminder window (within 30 minutes of reminder time)
+                time_until_reminder = (reminder_time - current_time).total_seconds()
+
+                logger.info(f"User {user_id}: reminder_time={reminder_time}, time_until_reminder={time_until_reminder}s")
+
+                # Send if we're within 30 minutes of the reminder time and haven't sent today
+                should_send = False
+                if -1800 <= time_until_reminder <= 1800:  # Within 30 min window
+                    if last_sent is None:
+                        should_send = True
+                        logger.info(f"User {user_id}: should send (never sent before)")
+                    else:
+                        # Check if we already sent a reminder today
+                        hours_since_last = (current_time - last_sent).total_seconds() / 3600
+                        if hours_since_last >= 23:  # Haven't sent in the last 23 hours
+                            should_send = True
+                            logger.info(f"User {user_id}: should send (last sent {hours_since_last:.1f} hours ago)")
+                        else:
+                            logger.info(f"User {user_id}: already sent recently ({hours_since_last:.1f} hours ago)")
+                else:
+                    logger.info(f"User {user_id}: not in reminder window")
+
+                if should_send:
+                    logger.info(f"Attempting to send reminder to user {user_id}")
+                    await self._send_reminder(user_id, streak)
+
+                    # Update last_reminder_sent
+                    async with DBContextManager() as cur:
+                        await cur.execute(
+                            "UPDATE SplatdleReminders SET last_reminder_sent = %s WHERE discord_id = %s",
+                            (current_time, user_id)
+                        )
+
+        except Exception as e:
+            logger.error(f"Error in check_and_send_reminders task: {e}")
+
+    async def _send_reminder(self, user_id: int, streak: int) -> None:
+        """Send a reminder to a user.
+
+        Tries to send via DM first, falls back to mentioning in the Splatdle channel.
+
+        Args:
+            user_id: The Discord user ID to remind.
+            streak: The user's current streak.
+        """
+        try:
+            user = await self.bot.fetch_user(user_id)
+
+            streak_text = f"Your current streak is **{streak}** 🔥" if streak > 0 else "Start your streak today!"
+
+            embed = interactions.Embed(
+                title="🎯 Splatdle Reminder!",
+                description=(
+                    f"Don't forget to play today's Splatdle to keep your streak alive!\n\n"
+                    f"{streak_text}\n\n"
+                    f"🔗 Play now at: https://sneakyofficial.com/splatdle"
+                ),
+                color=global_config.theme_colour
+            )
+            embed.set_footer(text="Use /splatdle-reminder to manage your reminder settings")
+
+            # Try to send DM first
+            dm_sent = False
+            try:
+                await user.send(embed=embed)
+                dm_sent = True
+                logger.info(f"Sent Splatdle reminder to user {user_id} via DM")
+            except Exception as e:
+                logger.warning(f"Could not DM user {user_id}: {e}")
+
+            # If DM failed, try to send in their guild's Splatdle channel
+            if not dm_sent:
+                # Find guilds the user is in and send to their Splatdle channels
+                async with DBContextManager(use_dict=True) as cur:
+                    await cur.execute("SELECT guild_id, channel_id FROM SplatdleChannels")
+                    channels = await cur.fetchall()
+
+                for channel_data in channels:
+                    try:
+                        guild = await self.bot.fetch_guild(channel_data['guild_id'])
+                        member = await guild.fetch_member(user_id)
+
+                        if member:  # User is in this guild
+                            channel = await self.bot.fetch_channel(channel_data['channel_id'])
+                            await channel.send(
+                                f"{user.mention} Don't forget to play today's Splatdle! {streak_text}",
+                                embed=embed
+                            )
+                            logger.info(f"Sent Splatdle reminder to user {user_id} in guild {channel_data['guild_id']}")
+                            break  # Only send in one guild
+                    except Exception as e:
+                        logger.debug(f"User {user_id} not in guild {channel_data['guild_id']}: {e}")
+                        continue
+
+        except Exception as e:
+            logger.error(f"Error sending reminder to user {user_id}: {e}")
 
 
 def setup(bot: interactions.Client) -> None:
