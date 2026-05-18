@@ -4,6 +4,7 @@ import marineAiLogo from "../assets/marineai.png";
 import sneakyLogo from "../assets/sneaky.jpg";
 import oce4MansLogo from "../assets/oce4mans.png";
 import private6mansLogo from "../assets/private6mans.png";
+import esportsUniHubLogo from "../assets/esportsunihub.jpg";
 import TitlePage from "../components/TitlePage";
 import TypewriterText from "../components/TypewriterText";
 import GitHubCard from "../components/GithubCard";
@@ -19,6 +20,7 @@ const PROFESSIONAL_PROJECTS = [
   },
   {
     title: "Esports Uni Hub",
+    imgSrc: esportsUniHubLogo,
     tags: ["Full-Stack", "React", "TypeScript", "FYP"],
     description:
       "Designed and built esportsunihub.com as my final-year project. A platform connecting UK university esports communities, helping students find teams, track results, and compete in organised leagues.",
