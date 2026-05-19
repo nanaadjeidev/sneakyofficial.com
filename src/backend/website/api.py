@@ -5,10 +5,32 @@ from typing import Any, Callable, Dict, Optional
 from .splatdle import Splatdle
 from .oauth import DiscordOauthHandler
 from ..util.database_context_manager import DBContextManager
+from ..tournament import TournamentManager
+from ..util.config import global_config
 import interactions
 import logging
 
 logger = logging.getLogger("API")
+
+
+def verify_tournament_admin(func: Callable) -> Callable:
+    """Decorator that checks Discord auth and confirms the user is a tournament admin."""
+    @wraps(func)
+    async def wrapper(self: 'SneakyApi', request: Request, *args: Any, **kwargs: Any) -> Any:
+        access_token = request.cookies.get("discord_access_token")
+        if not access_token:
+            return web.json_response({"error": "Not authenticated"}, status=401)
+
+        discord_info = await self.dc_token_handler.get_user_info(access_token)
+        if not discord_info:
+            return web.json_response({"error": "Invalid token"}, status=401)
+
+        user_id = int(discord_info.get("id", 0))
+        if user_id not in global_config.tournament_admin_ids:
+            return web.json_response({"error": "Forbidden"}, status=403)
+
+        return await func(self, request, user_id, *args, **kwargs)
+    return wrapper
 
 
 def verify_access_token(func: Callable) -> Callable:
@@ -193,6 +215,157 @@ class SneakyApi:
                 return web.json_response({"status": "ok"})
         except Exception as e:
             return web.json_response({"error": "Database error"}, status=500)
+
+    # ------------------------------------------------------------------ #
+    #  Tournament admin endpoints                                          #
+    # ------------------------------------------------------------------ #
+
+    @verify_tournament_admin
+    async def tournament_admin_get(self, request: Request, admin_id: int) -> web.Response:
+        """Return tournament + signups data for the admin panel."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"error": "guild_id required"}, status=400)
+        guild_id = int(guild_id_param)
+
+        t = await TournamentManager.get_active_tournament(guild_id)
+        if not t:
+            return web.json_response({"tournament": None, "signups": [], "pre_teams": []})
+
+        data = await TournamentManager.get_signups_for_admin(t["id"])
+        return web.json_response({"tournament": t, **data})
+
+    @verify_tournament_admin
+    async def tournament_admin_create(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            name = body.get("name", "Community Tournament")
+            guild_id = int(body["guild_id"])
+            team_size = int(body.get("team_size", 4))
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg, tid = await TournamentManager.create(
+            guild_id=guild_id, name=name, channel_id=0, created_by=admin_id, team_size=team_size
+        )
+        return web.json_response({"ok": ok, "message": msg, "tournament_id": tid})
+
+    @verify_tournament_admin
+    async def tournament_admin_cancel(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            guild_id = int(body["guild_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.cancel(guild_id=guild_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_save_teams(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            teams_data = body["teams"]
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.save_pre_teams(tournament_id, teams_data)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_lock(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            guild_id = int(body["guild_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg, teams = await TournamentManager.lock(guild_id=guild_id)
+        return web.json_response({"ok": ok, "message": msg, "teams": teams})
+
+    @verify_tournament_admin
+    async def tournament_admin_complete_match(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            winner_team_id = int(body["winner_team_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.admin_complete_match(match_id, winner_team_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    # ------------------------------------------------------------------ #
+    #  Public tournament endpoint                                          #
+    # ------------------------------------------------------------------ #
+
+    @verify_tournament_admin
+    async def serve_player_profile(self, request: Request, admin_id: int) -> web.Response:
+        from ..profile import ProfileManager
+        try:
+            discord_id = int(request.match_info["discord_id"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid discord_id"}, status=400)
+        p = await ProfileManager.get_profile_full(discord_id)
+        if not p:
+            return web.json_response({"error": "Not found"}, status=404)
+        if p.get("created_at"):
+            p["created_at"] = p["created_at"].isoformat()
+        if p.get("first_played_at"):
+            p["first_played_at"] = p["first_played_at"].isoformat()
+        if p.get("updated_at"):
+            p["updated_at"] = p["updated_at"].isoformat()
+        return web.json_response(p)
+
+    async def serve_leaderboard(self, request: Request) -> web.Response:
+        from ..profile import ProfileManager
+        sort = request.rel_url.query.get("sort", "rating")
+        rows = await ProfileManager.get_leaderboard(sort=sort, limit=50)
+        for r in rows:
+            if r.get("first_played_at"):
+                r["first_played_at"] = r["first_played_at"].isoformat() if hasattr(r["first_played_at"], "isoformat") else str(r["first_played_at"])
+        return web.json_response({"leaderboard": rows, "sort": sort})
+
+    @verify_tournament_admin
+    async def tournament_admin_save_schedule(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            schedule = body["schedule"]  # [{"round": int, "stage_name": str, "mode_id": str, "mode_name": str}]
+        except (KeyError, ValueError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        async with DBContextManager() as cur:
+            for entry in schedule:
+                await cur.execute(
+                    """INSERT INTO tournament_round_schedule (tournament_id, round, stage_name, mode_id, mode_name)
+                       VALUES (%s, %s, %s, %s, %s)
+                       ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name), mode_id = VALUES(mode_id), mode_name = VALUES(mode_name)""",
+                    (tournament_id, entry.get("round"), entry.get("stage_name"), entry.get("mode_id"), entry.get("mode_name"))
+                )
+        return web.json_response({"ok": True, "message": "Schedule saved."})
+
+    async def serve_tournament_current(self, request: Request) -> web.Response:
+        """Return the current active tournament bracket data (public, no auth needed)."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        tournament_id_param = request.rel_url.query.get("id")
+
+        try:
+            if tournament_id_param:
+                data = await TournamentManager.get_bracket_data(int(tournament_id_param))
+            elif guild_id_param:
+                tournament = await TournamentManager.get_active_tournament(int(guild_id_param))
+                if not tournament:
+                    return web.json_response({"tournament": None}, status=200)
+                data = await TournamentManager.get_bracket_data(tournament["id"])
+            else:
+                return web.json_response({"error": "Provide guild_id or id query param"}, status=400)
+
+            return web.json_response(data)
+        except Exception as e:
+            logger.exception("Tournament API error: %s", e)
+            return web.json_response({"error": "Server error"}, status=500)
 
     async def serve_splatdle(self, request: Request) -> web.Response:
         """Serve Splatdle game data.

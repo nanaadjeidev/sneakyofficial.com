@@ -117,6 +117,26 @@ class WebServer:
             "/api/splatdle", self.sneaky_api.serve_splatdle)
         self.app.router.add_post(
             "/api/splatdle/stats", self.sneaky_api.post_stats)
+        self.app.router.add_get(
+            "/api/tournament", self.sneaky_api.serve_tournament_current)
+        self.app.router.add_get(
+            "/api/tournament/admin", self.sneaky_api.tournament_admin_get)
+        self.app.router.add_post(
+            "/api/tournament/admin/create", self.sneaky_api.tournament_admin_create)
+        self.app.router.add_post(
+            "/api/tournament/admin/cancel", self.sneaky_api.tournament_admin_cancel)
+        self.app.router.add_post(
+            "/api/tournament/admin/teams", self.sneaky_api.tournament_admin_save_teams)
+        self.app.router.add_post(
+            "/api/tournament/admin/lock", self.sneaky_api.tournament_admin_lock)
+        self.app.router.add_post(
+            "/api/tournament/admin/match/complete", self.sneaky_api.tournament_admin_complete_match)
+        self.app.router.add_post(
+            "/api/tournament/admin/schedule", self.sneaky_api.tournament_admin_save_schedule)
+        self.app.router.add_get(
+            "/api/player/{discord_id}", self.sneaky_api.serve_player_profile)
+        self.app.router.add_get(
+            "/api/leaderboard", self.sneaky_api.serve_leaderboard)
 
         logger.debug("Static directory: %s", self.static_dir)
         assets_dir = os.path.join(self.static_dir, "assets")

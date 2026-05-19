@@ -10,6 +10,7 @@ import interactions
 from interactions import Intents
 from backend.util import global_config
 from backend.website import WebServer, __version__, __author__, setup_logging
+from backend.twitch import TwitchBot
 
 setup_logging()
 
@@ -67,21 +68,24 @@ for ext in ext_names:
 
 
 async def run_services() -> None:
-    """Run the main application services.
-
-    Starts the web server and Discord bot concurrently,
-    handling the main application loop.
-    """
-    """
-    Main method
-    """
+    """Run the main application services."""
     webserver = WebServer(bot=bot)
     logger.info("Using client ID: %s", global_config.client_id)
     logger.info("Running the application...")
-    await asyncio.gather(
+
+    services = [
         webserver.run(),
         bot.astart(global_config.discord_token),
-    )
+    ]
+
+    if global_config.twitch_bot_token and global_config.twitch_channel:
+        twitch_bot = TwitchBot()
+        logger.info("Starting Twitch bot for channel: %s", global_config.twitch_channel)
+        services.append(twitch_bot.start())
+    else:
+        logger.info("Twitch bot not configured — skipping (set TWITCH_BOT_TOKEN and TWITCH_CHANNEL to enable).")
+
+    await asyncio.gather(*services)
 
 if __name__ == "__main__":
     try:

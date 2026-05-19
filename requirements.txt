@@ -4,6 +4,7 @@ aiohttp-cors==0.7.0
 discord_py_interactions==5.13.1
 Authlib==1.4.1
 python-dotenv==1.0.1
-python-dotenv==1.0.1
 nest-asyncio==1.6.0
 requests
+twitchio==2.10.0
+trueskill==0.4.5

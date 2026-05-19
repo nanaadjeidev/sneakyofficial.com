@@ -51,6 +51,12 @@ class Config:
         self.discord_verify: str = ""
         self.error_log_channel: Optional[str] = None
         self.theme_colour: int = 0x7e32f0
+        self.twitch_bot_token: Optional[str] = None
+        self.twitch_bot_nick: Optional[str] = None
+        self.twitch_channel: Optional[str] = None
+        self.twitch_guild_id: Optional[int] = None
+        self.website_url: str = "https://sneakyofficial.com"
+        self.tournament_admin_ids: list[int] = []
         self.assign_values()
 
     def assign_values(self) -> None:
@@ -71,6 +77,14 @@ class Config:
         self.port = getenv("PORT")
         self.discord_verify = getenv("DISCORD_VERIFY")
         self.error_log_channel = getenv("ERROR_LOG_CHANNEL")
+        self.twitch_bot_token = getenv("TWITCH_BOT_TOKEN")
+        self.twitch_bot_nick = getenv("TWITCH_BOT_NICK")
+        self.twitch_channel = getenv("TWITCH_CHANNEL")
+        twitch_guild = getenv("TWITCH_GUILD_ID")
+        self.twitch_guild_id = int(twitch_guild) if twitch_guild else None
+        self.website_url = getenv("WEBSITE_URL", "https://sneakyofficial.com")
+        admin_ids_raw = getenv("TOURNAMENT_ADMIN_IDS", "339866237922181121")
+        self.tournament_admin_ids = [int(x.strip()) for x in admin_ids_raw.split(",") if x.strip()]
 
 
 class ScannerErrorFilter(logging.Filter):

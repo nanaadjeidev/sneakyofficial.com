@@ -79,3 +79,114 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 INDEX idx_guild_created (guild_id, created_at DESC),
 INDEX idx_created (created_at)
 );
+
+-- Tournament tables
+CREATE TABLE IF NOT EXISTS tournaments (
+id INT AUTO_INCREMENT PRIMARY KEY,
+guild_id BIGINT NOT NULL,
+name VARCHAR(100) NOT NULL,
+status ENUM('signup','active','complete','cancelled') DEFAULT 'signup',
+team_size TINYINT NOT NULL DEFAULT 4,
+channel_id BIGINT,
+created_by BIGINT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+INDEX idx_guild_status (guild_id, status)
+);
+-- Migration for existing installs: ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS team_size TINYINT NOT NULL DEFAULT 4;
+
+CREATE TABLE IF NOT EXISTS tournament_signups (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tournament_id INT NOT NULL,
+discord_id BIGINT,
+twitch_username VARCHAR(50),
+display_name VARCHAR(100) NOT NULL,
+assigned_team_id INT,
+signed_up_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+UNIQUE KEY unique_discord (tournament_id, discord_id),
+INDEX idx_tournament (tournament_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_teams (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tournament_id INT NOT NULL,
+team_name VARCHAR(100) NOT NULL,
+seed INT NOT NULL,
+captain_discord_id BIGINT,
+name_confirmed BOOLEAN DEFAULT FALSE,
+is_pre_created BOOLEAN DEFAULT FALSE,
+FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+INDEX idx_tournament (tournament_id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_team_members (
+team_id INT NOT NULL,
+signup_id INT NOT NULL,
+PRIMARY KEY (team_id, signup_id),
+FOREIGN KEY (team_id) REFERENCES tournament_teams(id) ON DELETE CASCADE,
+FOREIGN KEY (signup_id) REFERENCES tournament_signups(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tournament_matches (
+id INT AUTO_INCREMENT PRIMARY KEY,
+tournament_id INT NOT NULL,
+round INT NOT NULL,
+match_number INT NOT NULL,
+team1_id INT,
+team2_id INT,
+winner_id INT,
+status ENUM('pending','awaiting_confirmation','complete') DEFAULT 'pending',
+FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+FOREIGN KEY (team1_id) REFERENCES tournament_teams(id),
+FOREIGN KEY (team2_id) REFERENCES tournament_teams(id),
+FOREIGN KEY (winner_id) REFERENCES tournament_teams(id),
+INDEX idx_tournament_round (tournament_id, round)
+);
+
+CREATE TABLE IF NOT EXISTS player_profiles (
+id INT AUTO_INCREMENT PRIMARY KEY,
+discord_id BIGINT UNIQUE,
+twitch_username VARCHAR(50),
+display_name VARCHAR(100) NOT NULL,
+splattag VARCHAR(30) UNIQUE,
+rank TINYINT DEFAULT NULL,
+trueskill_mu FLOAT DEFAULT 25.0,
+trueskill_sigma FLOAT DEFAULT 8.333,
+tournament_wins INT DEFAULT 0,
+matches_won INT DEFAULT 0,
+matches_lost INT DEFAULT 0,
+tournaments_played INT DEFAULT 0,
+first_played_at DATETIME,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+INDEX idx_discord (discord_id),
+INDEX idx_twitch (twitch_username),
+INDEX idx_rank (rank DESC),
+INDEX idx_mu (trueskill_mu DESC)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_win_reports (
+id INT AUTO_INCREMENT PRIMARY KEY,
+match_id INT NOT NULL,
+reported_winner_id INT NOT NULL,
+reported_by_discord BIGINT,
+reported_by_twitch VARCHAR(50),
+confirmed_by_discord BIGINT,
+confirmed_by_twitch VARCHAR(50),
+status ENUM('pending','confirmed','disputed') DEFAULT 'pending',
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (match_id) REFERENCES tournament_matches(id) ON DELETE CASCADE,
+FOREIGN KEY (reported_winner_id) REFERENCES tournament_teams(id)
+);
+
+CREATE TABLE IF NOT EXISTS tournament_round_schedule (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tournament_id INT NOT NULL,
+  round INT NOT NULL,
+  stage_name VARCHAR(100),
+  mode_id VARCHAR(30),
+  mode_name VARCHAR(50),
+  UNIQUE KEY uq_round (tournament_id, round),
+  FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+);
