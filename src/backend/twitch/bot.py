@@ -155,7 +155,7 @@ class TwitchBot(commands.Bot):
 
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
-                "SELECT display_name, rank, trueskill_mu, trueskill_sigma, matches_won, matches_lost, tournament_wins "
+                "SELECT display_name, `rank`, trueskill_mu, trueskill_sigma, matches_won, matches_lost, tournament_wins "
                 "FROM player_profiles WHERE LOWER(twitch_username) = %s OR LOWER(display_name) = %s LIMIT 1",
                 (target, target)
             )
