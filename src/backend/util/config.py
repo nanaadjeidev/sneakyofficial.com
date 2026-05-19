@@ -56,6 +56,7 @@ class Config:
         self.twitch_channel: Optional[str] = None
         self.twitch_guild_id: Optional[int] = None
         self.website_url: str = "https://sneakyofficial.com"
+        self.discord_invite: str = "https://discord.gg/gmJeQefe5X"
         self.tournament_admin_ids: list[int] = []
         self.assign_values()
 
@@ -83,6 +84,7 @@ class Config:
         twitch_guild = getenv("TWITCH_GUILD_ID")
         self.twitch_guild_id = int(twitch_guild) if twitch_guild else None
         self.website_url = getenv("WEBSITE_URL", "https://sneakyofficial.com")
+        self.discord_invite = getenv("DISCORD_INVITE", "https://discord.gg/gmJeQefe5X")
         admin_ids_raw = getenv("TOURNAMENT_ADMIN_IDS", "339866237922181121")
         self.tournament_admin_ids = [int(x.strip()) for x in admin_ids_raw.split(",") if x.strip()]
 
