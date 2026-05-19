@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map } from "lucide-react";
+import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -573,7 +573,7 @@ function RoundScheduleSection({ tournamentId }: { tournamentId: number }) {
         onClick={() => { setOpen((o) => !o); if (!open) load(); }}
         className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
       >
-        <Map className="w-4 h-4" />
+        <MapIcon className="w-4 h-4" />
         <span className="font-medium">Round Schedule</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
@@ -698,7 +698,7 @@ function PlayerProfilesSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.map((p, i) => (
+                  {profiles.map((p, _i) => (
                     <tr
                       key={p.discord_id}
                       className="border-b border-slate-800/50 hover:bg-slate-800/20 last:border-b-0"

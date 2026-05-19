@@ -11,10 +11,6 @@ const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
 const ADMIN_DISCORD_IDS = ["339866237922181121"];
 const POLL_MS = 30_000;
 
-interface Member {
-  display_name?: string;
-}
-
 interface Team {
   id: number;
   name: string;
@@ -202,24 +198,7 @@ function RoundColumn({ round, matches, totalRounds, schedule }: { round: number;
 
 // --- Sign-up list (when tournament hasn't started) ---------------------
 
-function SignupList({ tournamentId }: { tournamentId: number }) {
-  const [players, setPlayers] = useState<string[]>([]);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const { data } = await axios.get(`${API_URL}/api/tournament`, {
-          params: { id: tournamentId },
-        });
-        // Collect all member names from any teams (there won't be any yet at signup stage)
-        setPlayers([]);
-      } catch {
-        // ignore
-      }
-    };
-    load();
-  }, [tournamentId]);
-
+function SignupList({ tournamentId: _tournamentId }: { tournamentId: number }) {
   return (
     <div className="text-center text-slate-400 py-8">
       <Users className="w-12 h-12 mx-auto mb-3 text-slate-600" />
