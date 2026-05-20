@@ -224,7 +224,11 @@ class TournamentExt(interactions.Extension):
     #  Admin commands                                                      #
     # ------------------------------------------------------------------ #
 
-    @slash_command(name="tournament", description="Tournament management")
+    @slash_command(
+        name="tournament",
+        description="Tournament management",
+        scopes=[global_config.tournament_guild_id] if global_config.tournament_guild_id else interactions.MISSING,
+    )
     async def tournament(self, ctx: interactions.SlashContext) -> None:
         pass
 
@@ -243,6 +247,7 @@ class TournamentExt(interactions.Extension):
         ],
     )
     async def tournament_create(self, ctx: interactions.SlashContext, name: str, team_size: int = 4) -> None:
+        await ctx.defer()
         ok, msg, tid = await TournamentManager.create(
             guild_id=ctx.guild_id,
             name=name,
@@ -294,6 +299,7 @@ class TournamentExt(interactions.Extension):
     @tournament.subcommand(sub_cmd_name="cancel", sub_cmd_description="Cancel the current tournament")
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     async def tournament_cancel(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer()
         ok, msg = await TournamentManager.cancel(guild_id=ctx.guild_id)
         colour = 0x2ecc71 if ok else 0xe74c3c
         await ctx.send(embed=_embed("Tournament Cancelled" if ok else "❌ Error", msg, colour))
@@ -314,9 +320,10 @@ class TournamentExt(interactions.Extension):
         opt_type=OptionType.INTEGER,
     )
     async def tournament_seed(self, ctx: interactions.SlashContext, count: int = 0) -> None:
+        await ctx.defer()
         async with DBContextManager() as cur:
             await cur.execute(
-                "SELECT id, name, team_size FROM tournaments WHERE guild_id = %s AND status = 'signup' ORDER BY created_at DESC LIMIT 1",
+                "SELECT id, name, status, team_size FROM tournaments WHERE guild_id = %s AND status IN ('signup','active') ORDER BY created_at DESC LIMIT 1",
                 (ctx.guild_id,)
             )
             row = await cur.fetchone()
@@ -326,7 +333,13 @@ class TournamentExt(interactions.Extension):
                     ephemeral=True,
                 )
                 return
-            tid, tname, team_size = row
+            tid, tname, status, team_size = row
+            if status != 'signup':
+                await ctx.send(
+                    embed=_embed("❌ Sign-ups are closed", f"**{tname}** is already active. Cancel it first with `/tournament cancel`.", 0xe74c3c),
+                    ephemeral=True,
+                )
+                return
             if count == 0:
                 count = team_size * 2  # default: 2 full teams
 
@@ -391,6 +404,9 @@ class TournamentExt(interactions.Extension):
                 ephemeral=True,
             )
             return
+
+        # Auto-cancel any existing tournament so quicktest can always be run fresh
+        await TournamentManager.cancel(ctx.guild_id)
 
         ok, msg, tid = await TournamentManager.create(
             guild_id=ctx.guild_id,
@@ -502,6 +518,7 @@ class TournamentExt(interactions.Extension):
 
     @tournament.subcommand(sub_cmd_name="signup", sub_cmd_description="Sign up for the current tournament")
     async def tournament_signup(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer()
         ok, msg = await TournamentManager.signup(
             guild_id=ctx.guild_id,
             discord_id=ctx.author_id,
@@ -513,6 +530,7 @@ class TournamentExt(interactions.Extension):
 
     @tournament.subcommand(sub_cmd_name="leave", sub_cmd_description="Leave the current tournament sign-up")
     async def tournament_leave(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer(ephemeral=True)
         ok, msg = await TournamentManager.leave(
             guild_id=ctx.guild_id,
             discord_id=ctx.author_id,
@@ -523,6 +541,7 @@ class TournamentExt(interactions.Extension):
 
     @tournament.subcommand(sub_cmd_name="status", sub_cmd_description="Show current tournament status with current round info")
     async def tournament_status(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer()
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 "SELECT id, name, status, team_size FROM tournaments WHERE guild_id = %s AND status IN ('signup','active','complete') ORDER BY created_at DESC LIMIT 1",
@@ -603,6 +622,7 @@ class TournamentExt(interactions.Extension):
 
     @tournament.subcommand(sub_cmd_name="players", sub_cmd_description="List all signed-up players")
     async def tournament_players(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer()
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 "SELECT id, name FROM tournaments WHERE guild_id = %s AND status = 'signup' ORDER BY created_at DESC LIMIT 1",
@@ -634,6 +654,7 @@ class TournamentExt(interactions.Extension):
     @tournament.subcommand(sub_cmd_name="nameteam", sub_cmd_description="Set your team's name (captains only)")
     @slash_option(name="name", description="Your team's new name", required=True, opt_type=OptionType.STRING)
     async def tournament_nameteam(self, ctx: interactions.SlashContext, name: str) -> None:
+        await ctx.defer()
         async with DBContextManager() as cur:
             await cur.execute(
                 "SELECT id FROM tournament_teams WHERE captain_discord_id = %s AND tournament_id IN (SELECT id FROM tournaments WHERE guild_id = %s AND status = 'active') LIMIT 1",
@@ -653,7 +674,7 @@ class TournamentExt(interactions.Extension):
 
     @tournament.subcommand(sub_cmd_name="matchinfo", sub_cmd_description="Show your current match details — map, mode, and opponent")
     async def tournament_matchinfo(self, ctx: interactions.SlashContext) -> None:
-        """Show the player's current pending match with stage image and mode."""
+        await ctx.defer(ephemeral=True)
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 "SELECT id FROM tournaments WHERE guild_id = %s AND status = 'active' ORDER BY created_at DESC LIMIT 1",
@@ -765,6 +786,7 @@ class TournamentExt(interactions.Extension):
     @tournament.subcommand(sub_cmd_name="confirm", sub_cmd_description="Manually confirm a match result by match ID")
     @slash_option(name="match_id", description="Match ID (shown on the report message)", required=True, opt_type=OptionType.INTEGER)
     async def tournament_confirm_cmd(self, ctx: interactions.SlashContext, match_id: int) -> None:
+        await ctx.defer(ephemeral=True)
         async with DBContextManager() as cur:
             await cur.execute(
                 "SELECT reported_winner_id FROM tournament_win_reports WHERE match_id = %s AND status = 'pending'",
