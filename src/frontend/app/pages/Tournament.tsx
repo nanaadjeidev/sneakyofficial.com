@@ -225,6 +225,7 @@ export default function Tournament() {
   // Admin-only data
   const [adminSignups, setAdminSignups] = useState<Signup[]>([]);
   const [adminPreTeams, setAdminPreTeams] = useState<PreTeam[]>([]);
+  const [adminDataLoaded, setAdminDataLoaded] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -253,8 +254,10 @@ export default function Tournament() {
       });
       setAdminSignups(res.signups ?? []);
       setAdminPreTeams(res.pre_teams ?? []);
+      setAdminDataLoaded(true);
     } catch {
       // Admin data fetch is best-effort
+      setAdminDataLoaded(true);
     }
   }, []);
 
@@ -266,6 +269,7 @@ export default function Tournament() {
 
   useEffect(() => {
     if (isAdmin) {
+      setAdminDataLoaded(false);
       fetchAdminData();
       const id = setInterval(fetchAdminData, POLL_MS);
       return () => clearInterval(id);
@@ -321,7 +325,7 @@ export default function Tournament() {
         </div>
 
         {/* Admin panel */}
-        {isAdmin && tournament && (
+        {isAdmin && adminDataLoaded && tournament && (
           <AdminPanel
             tournament={tournament}
             signups={adminSignups}
@@ -329,7 +333,7 @@ export default function Tournament() {
             onRefresh={handleAdminRefresh}
           />
         )}
-        {isAdmin && !tournament && (
+        {isAdmin && adminDataLoaded && !tournament && (
           <AdminPanel
             tournament={{ id: 0, name: "No active tournament", status: "signup" }}
             signups={[]}
