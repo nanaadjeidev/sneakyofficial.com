@@ -105,11 +105,6 @@ class ScannerErrorFilter(logging.Filter):
         Returns:
             False if the record should be filtered out, True otherwise.
         """
-        if record.levelno == logging.ERROR and 'Error handling request' in record.getMessage():
-            return False
-
-        # Filter known scanner patterns
-        msg = record.getMessage()
         scanner_patterns = [
             'BadStatusLine',
             'BadHttpMessage',
@@ -119,6 +114,7 @@ class ScannerErrorFilter(logging.Filter):
             'HELP',  # Redis scanner
         ]
 
+        msg = record.getMessage()
         for pattern in scanner_patterns:
             if pattern in msg:
                 return False

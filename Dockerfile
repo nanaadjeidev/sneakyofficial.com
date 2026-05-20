@@ -12,7 +12,9 @@ COPY src/frontend/ ./
 
 # Build with environment variables
 ARG VITE_API_URL
+ARG VITE_GUILD_ID
 ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_GUILD_ID=$VITE_GUILD_ID
 RUN npm run build
 
 # Python backend stage  

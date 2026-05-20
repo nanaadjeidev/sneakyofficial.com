@@ -17,19 +17,23 @@ def verify_tournament_admin(func: Callable) -> Callable:
     """Decorator that checks Discord auth and confirms the user is a tournament admin."""
     @wraps(func)
     async def wrapper(self: 'SneakyApi', request: Request, *args: Any, **kwargs: Any) -> Any:
-        access_token = request.cookies.get("discord_access_token")
-        if not access_token:
-            return web.json_response({"error": "Not authenticated"}, status=401)
+        try:
+            access_token = request.cookies.get("discord_access_token")
+            if not access_token:
+                return web.json_response({"error": "Not authenticated"}, status=401)
 
-        discord_info = await self.dc_token_handler.get_user_info(access_token)
-        if not discord_info:
-            return web.json_response({"error": "Invalid token"}, status=401)
+            discord_info = await self.dc_token_handler.get_user_info(access_token)
+            if not discord_info:
+                return web.json_response({"error": "Invalid token"}, status=401)
 
-        user_id = int(discord_info.get("id", 0))
-        if user_id not in global_config.tournament_admin_ids:
-            return web.json_response({"error": "Forbidden"}, status=403)
+            user_id = int(discord_info.get("id", 0))
+            if user_id not in global_config.tournament_admin_ids:
+                return web.json_response({"error": "Forbidden"}, status=403)
 
-        return await func(self, request, user_id, *args, **kwargs)
+            return await func(self, request, user_id, *args, **kwargs)
+        except Exception:
+            logger.exception("verify_tournament_admin failed for %s %s", request.method, request.path)
+            return web.json_response({"error": "Server error"}, status=500)
     return wrapper
 
 
@@ -242,12 +246,16 @@ class SneakyApi:
             name = body.get("name", "Community Tournament")
             guild_id = int(body["guild_id"])
             team_size = int(body.get("team_size", 4))
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
-        ok, msg, tid = await TournamentManager.create(
-            guild_id=guild_id, name=name, channel_id=0, created_by=admin_id, team_size=team_size
-        )
+        try:
+            ok, msg, tid = await TournamentManager.create(
+                guild_id=guild_id, name=name, channel_id=0, created_by=admin_id, team_size=team_size
+            )
+        except Exception:
+            logger.exception("tournament_admin_create failed")
+            return web.json_response({"error": "Server error"}, status=500)
         return web.json_response({"ok": ok, "message": msg, "tournament_id": tid})
 
     @verify_tournament_admin
@@ -255,10 +263,14 @@ class SneakyApi:
         try:
             body = await request.json()
             guild_id = int(body["guild_id"])
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
-        ok, msg = await TournamentManager.cancel(guild_id=guild_id)
+        try:
+            ok, msg = await TournamentManager.cancel(guild_id=guild_id)
+        except Exception:
+            logger.exception("tournament_admin_cancel failed")
+            return web.json_response({"error": "Server error"}, status=500)
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin
@@ -267,7 +279,7 @@ class SneakyApi:
             body = await request.json()
             tournament_id = int(body["tournament_id"])
             teams_data = body["teams"]
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
         ok, msg = await TournamentManager.save_pre_teams(tournament_id, teams_data)
@@ -278,7 +290,7 @@ class SneakyApi:
         try:
             body = await request.json()
             guild_id = int(body["guild_id"])
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
         ok, msg, teams = await TournamentManager.lock(guild_id=guild_id)
@@ -290,7 +302,7 @@ class SneakyApi:
             body = await request.json()
             match_id = int(body["match_id"])
             winner_team_id = int(body["winner_team_id"])
-        except (KeyError, ValueError):
+        except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
         ok, msg = await TournamentManager.admin_complete_match(match_id, winner_team_id)
@@ -360,7 +372,7 @@ class SneakyApi:
                     return web.json_response({"tournament": None}, status=200)
                 data = await TournamentManager.get_bracket_data(tournament["id"])
             else:
-                return web.json_response({"error": "Provide guild_id or id query param"}, status=400)
+                return web.json_response({"tournament": None, "rounds": []}, status=200)
 
             return web.json_response(data)
         except Exception as e:

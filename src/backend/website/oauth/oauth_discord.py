@@ -1,6 +1,5 @@
 import time
 import logging
-from urllib.parse import urlparse
 from aiohttp import web
 from typing import Any, Optional, Dict
 from backend.util.database_context_manager import DBContextManager
@@ -50,22 +49,24 @@ class DiscordOauthHandler(OauthBase):
             Redirect response to the authorized page or error response.
         """
 
-        auth_response_url = self.get_request_url(request)
-        print(auth_response_url)
-        parsed_url = urlparse(auth_response_url)
-        if not parsed_url.scheme:
-            auth_response_url = f"http://{auth_response_url}"
-
         code = request.query.get("code")
         if not code:
             return web.HTTPFound("/")
 
         try:
-            token = self.oauth2_client.fetch_token(
+            async with self.session.post(
                 self._token_url,
-                authorization_response=auth_response_url,
-                client_secret=self._client_secret,
-            )
+                data={
+                    'client_id': self._client_id,
+                    'client_secret': self._client_secret,
+                    'code': code,
+                    'grant_type': 'authorization_code',
+                    'redirect_uri': self._redirect_uri,
+                }
+            ) as resp:
+                if resp.status != 200:
+                    return web.Response(text=f"Failed to exchange code: HTTP {resp.status}", status=500)
+                token = await resp.json()
         except Exception as e:
             return web.Response(text=f"Error fetching token: {str(e)}", status=500)
 
@@ -98,13 +99,14 @@ class DiscordOauthHandler(OauthBase):
                             (int(user_id), access_token,
                              refresh_token, int(expires_at))
                         )
+                    cookie_domain = ".sneakyofficial.com" if global_config.secured else None
                     response = web.HTTPFound("/authorised")
                     response.set_cookie("discord_user_id", str(
-                        user_id), httponly=True, secure=global_config.secured, samesite="Lax", max_age=86400 * 30, domain=".sneakyofficial.com")
+                        user_id), httponly=True, secure=global_config.secured, samesite="Lax", max_age=86400 * 30, domain=cookie_domain)
                     response.set_cookie("discord_access_token", access_token, httponly=True,
-                                        secure=global_config.secured, samesite="Lax", max_age=3600, domain=".sneakyofficial.com")
+                                        secure=global_config.secured, samesite="Lax", max_age=3600, domain=cookie_domain)
                     response.set_cookie("discord_refresh_token", refresh_token, httponly=True,
-                                        secure=global_config.secured, samesite="Lax", max_age=86400 * 7, domain=".sneakyofficial.com")
+                                        secure=global_config.secured, samesite="Lax", max_age=86400 * 7, domain=cookie_domain)
                     logger.debug(
                         "%s has authorised via Discord Oauth2", user_id)
 
@@ -149,7 +151,6 @@ class DiscordOauthHandler(OauthBase):
             JSON response with authentication status and user data.
         """
         access_token = request.cookies.get("discord_access_token")
-        print(request.cookies)
         logger.debug("Checking discord auth status...")
         if not access_token:
             logger.debug("Rejected because there is no discord access token")
@@ -159,10 +160,11 @@ class DiscordOauthHandler(OauthBase):
         
         if not user_data:
             logger.debug("Invalid access token, clearing Discord cookies")
+            cookie_domain = ".sneakyofficial.com" if global_config.secured else None
             response = web.json_response({"logged_in": False}, status=401)
-            response.del_cookie("discord_access_token", domain=".sneakyofficial.com")
-            response.del_cookie("discord_refresh_token", domain=".sneakyofficial.com")
-            response.del_cookie("discord_user_id", domain=".sneakyofficial.com")
+            response.del_cookie("discord_access_token", domain=cookie_domain)
+            response.del_cookie("discord_refresh_token", domain=cookie_domain)
+            response.del_cookie("discord_user_id", domain=cookie_domain)
             return response
 
         async with DBContextManager() as cur:

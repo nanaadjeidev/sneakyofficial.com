@@ -220,12 +220,12 @@ export default function AdminPanel({
 
     setTeams((prev) => {
       const target = prev.find((t) => t.localId === teamLocalId);
-      if (!target || target.signupIds.length >= 4) return prev;
+      if (!target || target.signupIds.length >= teamSize) return prev;
       return prev.map((t) =>
         t.localId === teamLocalId ? { ...t, signupIds: [...t.signupIds, signupId] } : t
       );
     });
-  }, []);
+  }, [teamSize]);
 
   const removeFromTeam = useCallback((teamLocalId: string, signupId: number) => {
     setTeams((prev) =>

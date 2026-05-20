@@ -15,6 +15,7 @@ set -e
 
 # Default values
 API_URL="https://www.sneakyofficial.com"
+GUILD_ID="1019293451579293747"
 TAG="latest"
 REGISTRY="sneakynarnar"
 IMAGE_NAME="sneakyofficial.com"
@@ -53,6 +54,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         --api-url)
             API_URL="$2"
+            shift 2
+            ;;
+        --guild-id)
+            GUILD_ID="$2"
             shift 2
             ;;
         --tag)
@@ -101,6 +106,7 @@ echo -e "Building: ${YELLOW}${FULL_IMAGE_NAME}${NC}"
 
 docker build \
     --build-arg VITE_API_URL="${API_URL}" \
+    --build-arg VITE_GUILD_ID="${GUILD_ID}" \
     -t "${FULL_IMAGE_NAME}" \
     -f "${DOCKERFILE}" \
     .
