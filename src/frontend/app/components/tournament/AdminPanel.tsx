@@ -14,6 +14,7 @@ export interface Signup {
   discord_id: string | null;
   twitch_username: string | null;
   assigned_team_id: number | null;
+  rating: number;
 }
 
 export interface PreTeam {
@@ -261,18 +262,39 @@ export default function AdminPanel({
   };
 
   const autoAssignAll = () => {
-    let pool = [...unassigned];
-    const newTeams = [...teams];
+    // Sort pool by rating descending (best players first) for snake draft
+    const sortedPool = [...unassigned].sort((a, b) => {
+      const rA = signupsById.get(a)?.rating ?? 25;
+      const rB = signupsById.get(b)?.rating ?? 25;
+      return rB - rA;
+    });
+
+    // Deep-copy existing teams so we don't mutate state
+    const newTeams: LocalTeam[] = teams.map((t) => ({ ...t, signupIds: [...t.signupIds] }));
+
+    // Fill incomplete existing teams first (top of sorted pool)
+    let poolIdx = 0;
     for (const t of newTeams) {
-      while (t.signupIds.length < teamSize && pool.length > 0) {
-        t.signupIds.push(pool.shift()!);
+      while (t.signupIds.length < teamSize && poolIdx < sortedPool.length) {
+        t.signupIds.push(sortedPool[poolIdx++]);
       }
     }
-    while (pool.length >= teamSize) {
-      newTeams.push({ localId: uid(), name: "", signupIds: pool.splice(0, teamSize) });
-    }
-    setTeams(newTeams);
-    setUnassigned(pool);
+
+    // Snake-draft remaining players into new teams
+    const remaining = sortedPool.slice(poolIdx);
+    const numNew = Math.floor(remaining.length / teamSize);
+    const leftover = remaining.slice(numNew * teamSize);
+    const created: LocalTeam[] = Array.from({ length: numNew }, () => ({ localId: uid(), name: "", signupIds: [] }));
+
+    remaining.slice(0, numNew * teamSize).forEach((sid, i) => {
+      const round = Math.floor(i / numNew);
+      const pos   = i % numNew;
+      const idx   = round % 2 === 0 ? pos : numNew - 1 - pos;
+      created[idx].signupIds.push(sid);
+    });
+
+    setTeams([...newTeams, ...created]);
+    setUnassigned(leftover);
   };
 
   // ---- API calls ---------------------------------------------------------
@@ -362,13 +384,15 @@ export default function AdminPanel({
               New Tournament
             </button>
           )}
-          <button
-            onClick={cancelTournament}
-            disabled={cancelling}
-            className="text-xs px-3 py-1.5 rounded border border-red-700/50 text-red-400 hover:border-red-500 disabled:opacity-50"
-          >
-            {cancelling ? "Cancelling…" : "Cancel Tournament"}
-          </button>
+          {tournament.id !== 0 && (
+            <button
+              onClick={cancelTournament}
+              disabled={cancelling}
+              className="text-xs px-3 py-1.5 rounded border border-red-700/50 text-red-400 hover:border-red-500 disabled:opacity-50"
+            >
+              {cancelling ? "Cancelling…" : "Cancel Tournament"}
+            </button>
+          )}
         </div>
       </div>
 
@@ -506,7 +530,11 @@ export default function AdminPanel({
       )}
 
       {tournament.id !== 0 && (
-        <RoundScheduleSection tournamentId={tournament.id} />
+        <RoundScheduleSection
+          tournamentId={tournament.id}
+          signupCount={signups.length}
+          teamSize={teamSize}
+        />
       )}
 
       <PlayerProfilesSection />
@@ -516,13 +544,22 @@ export default function AdminPanel({
 
 // ---- Round schedule panel ------------------------------------------------
 
-function RoundScheduleSection({ tournamentId }: { tournamentId: number }) {
+function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
+  tournamentId: number;
+  signupCount: number;
+  teamSize: number;
+}) {
   const [open, setOpen] = useState(false);
   const [rounds, setRounds] = useState(0);
   const [schedule, setSchedule] = useState<RoundMapMode[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [loaded, setLoaded] = useState(false);
+
+  const estimatedRounds = Math.ceil(Math.log2(Math.max(Math.floor(signupCount / teamSize), 2)));
+  const [manualRounds, setManualRounds] = useState(estimatedRounds);
+
+  const displayRounds = rounds > 0 ? rounds : manualRounds;
 
   const load = useCallback(async () => {
     if (loaded) return;
@@ -580,25 +617,37 @@ function RoundScheduleSection({ tournamentId }: { tournamentId: number }) {
 
       {open && (
         <div className="mt-3">
-          {rounds === 0 ? (
-            <p className="text-xs text-slate-500 py-2">Lock the tournament first to set the schedule.</p>
-          ) : (
-            <>
-              {msg && (
-                <div className={`mb-3 text-xs px-3 py-2 rounded ${msg.ok ? "bg-green-900/40 text-green-300 border border-green-700/40" : "bg-red-900/40 text-red-300 border border-red-700/40"}`}>
-                  {msg.text}
-                </div>
+          {rounds === 0 && (
+            <div className="mb-3 flex items-center gap-2 text-xs text-slate-400">
+              <span>Estimated rounds:</span>
+              <input
+                type="number"
+                min={1}
+                max={8}
+                value={manualRounds}
+                onChange={(e) => setManualRounds(Math.max(1, Math.min(8, Number(e.target.value))))}
+                className="w-12 px-1 py-0.5 rounded bg-slate-700 border border-slate-600 text-slate-200 text-center"
+              />
+              {signupCount > 0 && (
+                <span className="text-slate-500">
+                  ({Math.floor(signupCount / teamSize)} teams signed up)
+                </span>
               )}
-              <MapModePicker rounds={rounds} value={schedule} onChange={setSchedule} />
-              <button
-                onClick={save}
-                disabled={saving}
-                className="mt-3 px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save Schedule"}
-              </button>
-            </>
+            </div>
           )}
+          {msg && (
+            <div className={`mb-3 text-xs px-3 py-2 rounded ${msg.ok ? "bg-green-900/40 text-green-300 border border-green-700/40" : "bg-red-900/40 text-red-300 border border-red-700/40"}`}>
+              {msg.text}
+            </div>
+          )}
+          <MapModePicker rounds={displayRounds} value={schedule} onChange={setSchedule} />
+          <button
+            onClick={save}
+            disabled={saving}
+            className="mt-3 px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Schedule"}
+          </button>
         </div>
       )}
     </div>

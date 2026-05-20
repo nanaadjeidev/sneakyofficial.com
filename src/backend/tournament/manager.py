@@ -270,7 +270,8 @@ class TournamentManager:
             if num_teams < 2:
                 min_players = team_size * 2
                 needed = min_players - (len(pre_teams_raw) * team_size + len(unassigned))
-                return False, f"Need at least {min_players} players (2 full teams of {team_size}). Need {max(0, needed)} more.", []
+                detail = f"Found {len(pre_teams_raw)} saved team(s) and {len(unassigned)} unassigned player(s)."
+                return False, f"Need at least {min_players} players (2 full teams of {team_size}). Need {max(0, needed)} more. {detail}", []
 
             # Generate R1 slot pairs
             r1_matches = _build_r1_slots(team_ids)
@@ -501,8 +502,15 @@ class TournamentManager:
         """Return all signups + current pre-team assignments for the admin UI."""
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
-                """SELECT id, display_name, discord_id, twitch_username, assigned_team_id
-                   FROM tournament_signups WHERE tournament_id = %s ORDER BY signed_up_at""",
+                """SELECT s.id, s.display_name, s.discord_id, s.twitch_username, s.assigned_team_id,
+                          COALESCE(pp.trueskill_mu, 25.0) AS rating
+                   FROM tournament_signups s
+                   LEFT JOIN player_profiles pp ON (
+                       (s.discord_id IS NOT NULL AND pp.discord_id = s.discord_id)
+                       OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                           AND LOWER(pp.twitch_username) = LOWER(s.twitch_username))
+                   )
+                   WHERE s.tournament_id = %s ORDER BY s.signed_up_at""",
                 (tournament_id,)
             )
             signups = list(await cur.fetchall())
