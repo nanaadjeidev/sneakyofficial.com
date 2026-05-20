@@ -282,7 +282,11 @@ class SneakyApi:
         except (KeyError, ValueError, TypeError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
-        ok, msg = await TournamentManager.save_pre_teams(tournament_id, teams_data)
+        try:
+            ok, msg = await TournamentManager.save_pre_teams(tournament_id, teams_data)
+        except Exception:
+            logger.exception("tournament_admin_save_teams failed for tournament_id=%s", tournament_id)
+            return web.json_response({"ok": False, "message": "Server error while saving teams — check logs."}, status=500)
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin

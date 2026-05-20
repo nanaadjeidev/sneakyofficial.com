@@ -309,8 +309,9 @@ export default function AdminPanel({
       const { data } = await axios.post(`${API_URL}/api/tournament/admin/teams`, payload, { withCredentials: true });
       flash(data.message, data.ok);
       if (data.ok) onRefresh();
-    } catch {
-      flash("Failed to save teams.", false);
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      flash(msg ?? "Failed to save teams.", false);
     } finally {
       setSaving(false);
     }
