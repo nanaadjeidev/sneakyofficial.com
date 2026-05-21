@@ -47,6 +47,8 @@ interface MyMatch {
   player_team_id: number;
   opposing_team_id: number;
   reported_winner_id: number | null;
+  is_home_team: boolean;
+  room_code: string | null;
 }
 
 const CARD_H  = 84; // estimated match-card height (px) used for gap maths
@@ -613,6 +615,13 @@ function MatchReportCard({
       <div className="flex items-center gap-2 mb-3">
         <Swords className="w-4 h-4 text-blue-400" />
         <span className="text-sm font-semibold text-blue-300">Your Match</span>
+        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ml-1 ${
+          match.is_home_team
+            ? "bg-amber-900/30 text-amber-300 border-amber-600/40"
+            : "bg-slate-800/60 text-slate-400 border-slate-600/40"
+        }`}>
+          {match.is_home_team ? "🏠 Home" : "✈️ Away"}
+        </span>
         <span className="text-xs text-slate-500 ml-auto">Round {match.round}</span>
       </div>
       <p className="text-sm text-slate-300 mb-4">
@@ -620,6 +629,15 @@ function MatchReportCard({
         <span className="text-slate-500 mx-2">vs</span>
         <span className="text-white font-semibold">{theirTeamName ?? "Opponents"}</span>
       </p>
+      {match.is_home_team && match.room_code && (
+        <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
+          <p className="text-xs text-amber-400/80 mb-1">You are the home team — create the private lobby</p>
+          <p className="text-lg font-mono font-bold tracking-widest text-amber-300">{match.room_code}</p>
+        </div>
+      )}
+      {!match.is_home_team && (
+        <p className="mb-4 text-xs text-slate-500">You are the away team — wait for the home team to share the room code.</p>
+      )}
 
       {match.status === "pending" && (
         <div className="flex gap-2">

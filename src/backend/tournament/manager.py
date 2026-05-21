@@ -2,7 +2,12 @@
 import logging
 import math
 import random
+import string
 from typing import Optional
+
+
+def _random_room_code() -> str:
+    return "".join(random.choices(string.digits, k=4))
 
 from backend.util.database_context_manager import DBContextManager
 # Imported lazily inside confirm_win to avoid circular imports
@@ -358,11 +363,13 @@ class TournamentManager:
                         is_bye = t2 is None
                         status = "complete" if is_bye else "pending"
                         winner_id = t1 if is_bye else None
+                        home_team = random.choice([t1, t2]) if not is_bye else None
+                        room_code = _random_room_code() if not is_bye else None
                         await cur.execute(
                             """INSERT INTO tournament_matches
-                               (tournament_id, round, match_number, team1_id, team2_id, winner_id, status)
-                               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-                            (tid, rnd, mnum, t1, t2, winner_id, status)
+                               (tournament_id, round, match_number, team1_id, team2_id, winner_id, status, home_team_id, room_code)
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                            (tid, rnd, mnum, t1, t2, winner_id, status, home_team, room_code)
                         )
                     else:
                         await cur.execute(
@@ -458,7 +465,7 @@ class TournamentManager:
             await cur.execute(
                 """SELECT m.id, m.round, m.match_number, m.team1_id, m.team2_id, m.status,
                           t1.team_name AS team1_name, t2.team_name AS team2_name,
-                          wr.reported_winner_id
+                          wr.reported_winner_id, m.home_team_id, m.room_code
                    FROM tournament_matches m
                    LEFT JOIN tournament_teams t1 ON t1.id = m.team1_id
                    LEFT JOIN tournament_teams t2 ON t2.id = m.team2_id
@@ -472,6 +479,9 @@ class TournamentManager:
             if match:
                 match["player_team_id"] = team_id
                 match["opposing_team_id"] = match["team2_id"] if team_id == match["team1_id"] else match["team1_id"]
+                match["is_home_team"] = match["home_team_id"] == team_id
+                if not match["is_home_team"]:
+                    match["room_code"] = None  # away team never sees the code
             return match
 
     @staticmethod
@@ -1043,16 +1053,25 @@ class TournamentManager:
         slot = 1 if current_match_num % 2 == 1 else 2
 
         await cur.execute(
-            "SELECT id FROM tournament_matches WHERE tournament_id = %s AND round = %s AND match_number = %s",
+            "SELECT id, team1_id, team2_id FROM tournament_matches WHERE tournament_id = %s AND round = %s AND match_number = %s",
             (tournament_id, next_round, next_match_num)
         )
         next_match = await cur.fetchone()
         if not next_match:
             return  # This was the final
 
-        next_match_id = next_match[0]
+        next_match_id, existing_t1, existing_t2 = next_match
         col = "team1_id" if slot == 1 else "team2_id"
         await cur.execute(
             f"UPDATE tournament_matches SET {col} = %s WHERE id = %s",
             (winner_team_id, next_match_id)
         )
+
+        # Once both teams are known, assign a home team and room code
+        other = existing_t2 if slot == 1 else existing_t1
+        if other is not None:
+            home_team = random.choice([winner_team_id, other])
+            await cur.execute(
+                "UPDATE tournament_matches SET home_team_id = %s, room_code = %s WHERE id = %s",
+                (home_team, _random_room_code(), next_match_id)
+            )

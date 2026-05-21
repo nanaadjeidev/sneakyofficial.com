@@ -733,6 +733,38 @@ class TournamentExt(interactions.Extension):
     #  Match reporting                                                     #
     # ------------------------------------------------------------------ #
 
+    @tournament.subcommand(sub_cmd_name="room", sub_cmd_description="Get your match room code (home team only)")
+    async def tournament_room(self, ctx: interactions.SlashContext) -> None:
+        await ctx.defer(ephemeral=True)
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT id FROM tournaments WHERE guild_id = %s AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+                (ctx.guild_id,)
+            )
+            t = await cur.fetchone()
+        if not t:
+            await ctx.send(embed=_embed("❌ No active tournament", "There is no tournament in progress.", 0xe74c3c), ephemeral=True)
+            return
+
+        match = await TournamentManager.get_player_active_match(t["id"], discord_id=ctx.author_id)
+        if not match:
+            await ctx.send(embed=_embed("❌ No match found", "You don't have an active match right now.", 0xe74c3c), ephemeral=True)
+            return
+
+        if not match.get("is_home_team"):
+            await ctx.send(
+                embed=_embed("Away Team", "Your team is the **away team** this match. Ask the home team to share the room code with you.", 0x95a5a6),
+                ephemeral=True,
+            )
+            return
+
+        code = match.get("room_code", "????")
+        embed = _embed("🏠 Room Code", f"Your team is the **home team**. Create the private lobby and share the code below with the opposing team.", 0x2ecc71)
+        embed.add_field("Room Code", f"```{code}```", inline=False)
+        embed.add_field("Round", str(match["round"]), inline=True)
+        embed.set_footer(text="Only you can see this message.")
+        await ctx.send(embed=embed, ephemeral=True)
+
     @tournament.subcommand(sub_cmd_name="report", sub_cmd_description="Report your match result")
     @slash_option(name="result", description="Did your team win or lose?", required=True, opt_type=OptionType.STRING,
                   choices=[

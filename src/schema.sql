@@ -142,13 +142,20 @@ match_number INT NOT NULL,
 team1_id INT,
 team2_id INT,
 winner_id INT,
+home_team_id INT DEFAULT NULL,
+room_code CHAR(4) DEFAULT NULL,
 status ENUM('pending','awaiting_confirmation','complete') DEFAULT 'pending',
 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
 FOREIGN KEY (team1_id) REFERENCES tournament_teams(id),
 FOREIGN KEY (team2_id) REFERENCES tournament_teams(id),
 FOREIGN KEY (winner_id) REFERENCES tournament_teams(id),
+FOREIGN KEY (home_team_id) REFERENCES tournament_teams(id),
 INDEX idx_tournament_round (tournament_id, round)
 );
+-- Migration for existing installs:
+-- ALTER TABLE tournament_matches ADD COLUMN home_team_id INT DEFAULT NULL;
+-- ALTER TABLE tournament_matches ADD COLUMN room_code CHAR(4) DEFAULT NULL;
+-- ALTER TABLE tournament_matches ADD FOREIGN KEY (home_team_id) REFERENCES tournament_teams(id);
 
 CREATE TABLE IF NOT EXISTS player_profiles (
 id INT AUTO_INCREMENT PRIMARY KEY,
