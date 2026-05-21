@@ -281,14 +281,20 @@ class DevTools(interactions.Extension):
     _WELCOME_GUILD   = 1019293451579293747
     _WELCOME_CHANNEL = 1044027827634319360
 
+    _WELCOME_ROLE    = 1019293451600273538
+
     @interactions.listen(MemberAdd)
     async def on_member_join(self, event: MemberAdd) -> None:
         if int(event.guild_id) != self._WELCOME_GUILD:
             return
+        member = event.member
+        try:
+            await member.add_role(self._WELCOME_ROLE, guild_id=self._WELCOME_GUILD)
+        except Exception:
+            logger.warning("Failed to assign narnarers role to %s", member.id)
         channel = self.bot.get_channel(self._WELCOME_CHANNEL)
         if channel is None:
             return
-        member = event.member
         await channel.send(
             f"Welcome to the server, {member.mention}! 🦑\n"
             f"Head over to the channels and introduce yourself. Hope you enjoy your stay!"
