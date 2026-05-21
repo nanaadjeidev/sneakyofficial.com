@@ -468,6 +468,10 @@ export default function AdminPanel({
 
   const flash = (text: string, ok: boolean) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
 
+  // Ref so drag callbacks can read current teams without stale closure values
+  const teamsRef = useRef(teams);
+  teamsRef.current = teams;
+
   // ---- Sync new/removed signups into the unassigned pool -----------------
   const prevSignupIdsRef = useRef<Set<number>>(new Set(signups.map((s) => s.id)));
   useEffect(() => {
@@ -501,45 +505,50 @@ export default function AdminPanel({
 
   // ---- Drag from unassigned pool ----------------------------------------
 
+  // Drop onto the unassigned pool — remove from any team and place back in pool
   const removeSignupFromAll = (signupId: number) => {
     setIsDirty(true);
     setTeams((prev) => prev.map((t) => ({
       ...t,
-      signupIds:    t.signupIds.filter((id) => id !== signupId),
-      subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+      signupIds:       t.signupIds.filter((id) => id !== signupId),
+      subSignupIds:    t.subSignupIds.filter((id) => id !== signupId),
       captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
     })));
-    setUnassigned((prev) => prev.filter((id) => id !== signupId));
+    // ADD to pool (was incorrectly filtering it out)
+    setUnassigned((prev) => prev.includes(signupId) ? prev : [...prev, signupId]);
   };
 
   const moveToTeam = useCallback((teamLocalId: string, signupId: number) => {
+    // Read current state via ref to check capacity before touching anything
+    const target = teamsRef.current.find((t) => t.localId === teamLocalId);
+    if (!target || target.signupIds.length >= teamSize) return; // full — abort entirely
     setIsDirty(true);
     setTeams((prev) => {
-      const updated = prev.map((t) => ({
+      const stripped = prev.map((t) => ({
         ...t,
-        signupIds:    t.signupIds.filter((id) => id !== signupId),
-        subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+        signupIds:       t.signupIds.filter((id) => id !== signupId),
+        subSignupIds:    t.subSignupIds.filter((id) => id !== signupId),
         captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
       }));
-      return updated.map((t) => {
-        if (t.localId !== teamLocalId) return t;
-        if (t.signupIds.length >= teamSize) return t;
-        return { ...t, signupIds: [...t.signupIds, signupId] };
-      });
+      return stripped.map((t) =>
+        t.localId === teamLocalId ? { ...t, signupIds: [...t.signupIds, signupId] } : t
+      );
     });
     setUnassigned((prev) => prev.filter((id) => id !== signupId));
   }, [teamSize]);
 
   const moveToSub = useCallback((teamLocalId: string, signupId: number) => {
+    // Check target exists before modifying anything
+    if (!teamsRef.current.find((t) => t.localId === teamLocalId)) return;
     setIsDirty(true);
     setTeams((prev) => {
-      const updated = prev.map((t) => ({
+      const stripped = prev.map((t) => ({
         ...t,
-        signupIds:    t.signupIds.filter((id) => id !== signupId),
-        subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+        signupIds:       t.signupIds.filter((id) => id !== signupId),
+        subSignupIds:    t.subSignupIds.filter((id) => id !== signupId),
         captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
       }));
-      return updated.map((t) =>
+      return stripped.map((t) =>
         t.localId === teamLocalId && !t.subSignupIds.includes(signupId)
           ? { ...t, subSignupIds: [...t.subSignupIds, signupId] }
           : t
