@@ -337,8 +337,7 @@ function ConfirmModal({
 
 // ---- Admin match reporter ------------------------------------------------
 
-function AdminMatchReporter({ tournamentId, onRefresh, flash }: {
-  tournamentId: number;
+function AdminMatchReporter({ onRefresh, flash }: {
   onRefresh: () => void;
   flash: (text: string, ok: boolean) => void;
 }) {
@@ -951,7 +950,7 @@ export default function AdminPanel({
       )}
 
       {tournament.status === "active" && tournament.id !== 0 && (
-        <AdminMatchReporter tournamentId={tournament.id} onRefresh={onRefresh} flash={flash} />
+        <AdminMatchReporter onRefresh={onRefresh} flash={flash} />
       )}
 
       {tournament.id !== 0 && (
