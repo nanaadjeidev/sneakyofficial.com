@@ -845,9 +845,15 @@ class TournamentExt(interactions.Extension):
 
             opposing_id = team2_id if winner_team_id == team1_id else team1_id
             await cur.execute(
-                """SELECT s.discord_id FROM tournament_team_members ttm
+                """SELECT COALESCE(s.discord_id, pp.discord_id) AS discord_id
+                   FROM tournament_team_members ttm
                    JOIN tournament_signups s ON s.id = ttm.signup_id
-                   WHERE ttm.team_id = %s AND s.discord_id IS NOT NULL""",
+                   LEFT JOIN player_profiles pp ON (
+                       s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                       AND LOWER(pp.twitch_username) = LOWER(s.twitch_username)
+                   )
+                   WHERE ttm.team_id = %s
+                   AND (s.discord_id IS NOT NULL OR pp.discord_id IS NOT NULL)""",
                 (opposing_id,)
             )
             opposing_members = await cur.fetchall()
