@@ -88,8 +88,9 @@ def _build_r1_slots(team_ids: list[int]) -> list[tuple[Optional[int], Optional[i
 class TournamentManager:
 
     # In-memory overlay state (resets on server restart — fine for live stream use)
-    _pinned: dict[int, int | None] = {}   # guild_id → match_id
-    _game_scores: dict[int, list[int]] = {}  # match_id → [team1_games, team2_games]
+    _pinned: dict[int, int | None] = {}          # guild_id → match_id
+    _game_scores: dict[int, list[int]] = {}       # match_id → [team1_games, team2_games]
+    _game_results: dict[int, dict[int, int]] = {} # match_id → {game_number: winner (1 or 2)}
 
     @classmethod
     def pin_match(cls, guild_id: int, match_id: int | None) -> None:
@@ -101,11 +102,28 @@ class TournamentManager:
 
     @classmethod
     def set_game_score(cls, match_id: int, team1_games: int, team2_games: int) -> None:
+        old = cls._game_scores.get(match_id, [0, 0])
+        old_total = old[0] + old[1]
+        new_total = team1_games + team2_games
+        results = cls._game_results.setdefault(match_id, {})
+        if new_total > old_total:
+            # A game was just completed — record which team won it
+            game_num = new_total
+            results[game_num] = 1 if team1_games > old[0] else 2
+        elif new_total < old_total:
+            # Admin corrected score downward — remove invalidated game results
+            for g in [k for k in results if k > new_total]:
+                del results[g]
         cls._game_scores[match_id] = [team1_games, team2_games]
 
     @classmethod
     def get_game_score(cls, match_id: int) -> list[int]:
         return cls._game_scores.get(match_id, [0, 0])
+
+    @classmethod
+    def get_game_results(cls, match_id: int) -> list[dict]:
+        results = cls._game_results.get(match_id, {})
+        return [{"game_number": g, "winner": w} for g, w in sorted(results.items())]
 
     @staticmethod
     @staticmethod
@@ -187,6 +205,7 @@ class TournamentManager:
             "stage_name": current_stage,
             "mode_name": schedule["mode_name"] if schedule else None,
             "games": games,
+            "game_results": TournamentManager.get_game_results(match_id),
         }
 
     @staticmethod
@@ -912,6 +931,14 @@ class TournamentManager:
 
         teams_data: [{"name": str, "signup_ids": [int, ...], "captain_signup_id": int|None, "sub_signup_ids": [int, ...]}]
         """
+        from backend.util.content_filter import check_team_name
+        for team in teams_data:
+            provided_name = team.get("name")
+            if provided_name:
+                ok, reason = check_team_name(provided_name)
+                if not ok:
+                    return False, f"Team name \"{provided_name}\": {reason}"
+
         async with DBContextManager() as cur:
             await _ensure_is_sub_column(cur)
 
@@ -1033,6 +1060,11 @@ class TournamentManager:
     @staticmethod
     async def set_team_name(team_id: int, new_name: str, requestor_discord_id: int) -> tuple[bool, str]:
         """Allow captain (or admin) to rename a team once."""
+        from backend.util.content_filter import check_team_name
+        ok, reason = check_team_name(new_name)
+        if not ok:
+            return False, reason  # type: ignore[return-value]
+
         async with DBContextManager() as cur:
             await cur.execute(
                 "SELECT captain_discord_id, tournament_id, name_confirmed FROM tournament_teams WHERE id = %s",

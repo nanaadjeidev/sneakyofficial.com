@@ -512,6 +512,7 @@ class SneakyApi:
             "match_id": match_id,
             "team1_games": team1_games,
             "team2_games": team2_games,
+            "game_results": TournamentManager.get_game_results(match_id),
         })
         return web.json_response({"ok": True})
 

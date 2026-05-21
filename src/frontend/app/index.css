@@ -14,14 +14,18 @@ html, body, #root {
 
 /* Overlay pages use transparent backgrounds for OBS browser source */
 /* JS in each overlay sets body.overlay-mode directly (works in all CEF versions) */
+html:has(body.overlay-mode),
+html:has([data-overlay]),
 body.overlay-mode,
 body:has([data-overlay]) {
   background: transparent !important;
+  overflow: hidden !important;
 }
 body.overlay-mode #root,
 body:has([data-overlay]) #root {
   background: transparent !important;
   height: auto;
+  overflow: hidden;
 }
 
 /* Glassmorphism utilities */
