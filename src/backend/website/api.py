@@ -387,6 +387,44 @@ class SneakyApi:
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin
+    async def admin_discord_lookup(self, request: Request, admin_id: int) -> web.Response:
+        import re
+        q = request.rel_url.query.get("q", "").strip()
+        if not q:
+            return web.json_response({"ok": False, "error": "No query"}, status=400)
+        guild_id_str = request.rel_url.query.get("guild_id") or (
+            str(global_config.tournament_guild_id) if global_config.tournament_guild_id else None
+        )
+        if re.match(r'^\d{17,20}$', q):
+            try:
+                user = await self.splatdle.bot.fetch_user(int(q))
+                return web.json_response({
+                    "ok": True,
+                    "discord_id": str(user.id),
+                    "username": user.username,
+                    "avatar_url": str(user.avatar_url) if user.avatar_url else None,
+                })
+            except Exception:
+                return web.json_response({"ok": False, "error": "User not found"})
+        if not guild_id_str:
+            return web.json_response({"ok": False, "error": "No guild configured for username lookup"})
+        try:
+            guild = await self.splatdle.bot.fetch_guild(int(guild_id_str))
+            members = await guild.search_members(q, limit=1)
+            if members:
+                member = members[0]
+                return web.json_response({
+                    "ok": True,
+                    "discord_id": str(member.id),
+                    "username": member.username,
+                    "avatar_url": str(member.avatar_url) if member.avatar_url else None,
+                })
+            return web.json_response({"ok": False, "error": "No member found with that username"})
+        except Exception:
+            logger.exception("admin_discord_lookup failed for q=%r", q)
+            return web.json_response({"ok": False, "error": "Lookup failed"})
+
+    @verify_tournament_admin
     async def admin_toggle_twitch_native(self, request: Request, admin_id: int) -> web.Response:
         from ..profile import ProfileManager
         try:

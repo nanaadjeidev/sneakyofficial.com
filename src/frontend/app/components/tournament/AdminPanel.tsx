@@ -1112,10 +1112,11 @@ function PlayerProfilesSection() {
   const [splattagSaving, setSplattagSaving] = useState<Record<string, boolean>>({});
   const [nativeToggling, setNativeToggling] = useState<Record<number, boolean>>({});
   const [discordEdit, setDiscordEdit] = useState<Record<number, string | null>>({});
-  const discordSavingRef = useRef<Record<number, boolean>>({});
-  const setDiscordSaving = (fn: (prev: Record<number, boolean>) => Record<number, boolean>) => {
-    discordSavingRef.current = fn(discordSavingRef.current);
-  };
+  const [discordSaving, setDiscordSaving] = useState<Record<number, boolean>>({});
+  const [discordSaveError, setDiscordSaveError] = useState<Record<number, string>>({});
+  const [discordInfo, setDiscordInfo] = useState<Record<number, { discord_id: string; username: string; avatar_url: string | null }>>({});
+  const [discordLookupLoading, setDiscordLookupLoading] = useState<Record<number, boolean>>({});
+  const discordLookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -1193,6 +1194,48 @@ function PlayerProfilesSection() {
       setSplattagSaving((prev) => ({ ...prev, [key]: false }));
     }
   };
+
+  const lookupDiscordUser = useCallback(async (playerId: number, q: string) => {
+    setDiscordLookupLoading((prev) => ({ ...prev, [playerId]: true }));
+    try {
+      const { data } = await axios.get(`${API_URL}/api/admin/discord-lookup`, {
+        params: { q, guild_id: GUILD_ID || undefined },
+        withCredentials: true,
+      });
+      if (data.ok) {
+        setDiscordInfo((prev) => ({ ...prev, [playerId]: { discord_id: data.discord_id, username: data.username, avatar_url: data.avatar_url ?? null } }));
+      } else {
+        setDiscordInfo((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+      }
+    } catch {
+      setDiscordInfo((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+    } finally {
+      setDiscordLookupLoading((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+    }
+  }, []);
+
+  const saveDiscordId = useCallback(async (playerId: number, val: string) => {
+    if (!val || !/^\d{17,20}$/.test(val)) return;
+    setDiscordSaving((prev) => ({ ...prev, [playerId]: true }));
+    setDiscordSaveError((prev) => ({ ...prev, [playerId]: "" }));
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/admin/player/${playerId}/discord`,
+        { discord_id: val },
+        { withCredentials: true }
+      );
+      if (data.ok) {
+        setProfiles((prev) => prev.map((r) => r.id === playerId ? { ...r, discord_id: val } : r));
+        setDiscordEdit((prev) => ({ ...prev, [playerId]: null }));
+      } else {
+        setDiscordSaveError((prev) => ({ ...prev, [playerId]: data.message ?? "Failed to save." }));
+      }
+    } catch {
+      setDiscordSaveError((prev) => ({ ...prev, [playerId]: "Request failed." }));
+    } finally {
+      setDiscordSaving((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+    }
+  }, []);
 
   return (
     <div className="mt-4 border-t border-slate-700/40 pt-4">
@@ -1287,56 +1330,90 @@ function PlayerProfilesSection() {
                           </div>
                         )}
                         {discordEdit[p.id] != null ? (
-                          <div className="flex items-center gap-1 mt-0.5">
-                            <input
-                              autoFocus
-                              value={discordEdit[p.id] ?? ""}
-                              onChange={(e) => setDiscordEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                              onKeyDown={async (e) => {
-                                if (e.key === "Escape") { setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); return; }
-                                if (e.key !== "Enter") return;
-                                const val = discordEdit[p.id]?.trim();
-                                if (!val || !/^\d{17,20}$/.test(val)) return;
-                                setDiscordSaving((prev) => ({ ...prev, [p.id]: true }));
-                                try {
-                                  const { data } = await axios.post(`${API_URL}/api/admin/player/${p.id}/discord`, { discord_id: val }, { withCredentials: true });
-                                  if (data.ok) { setProfiles((prev) => prev.map((r) => r.id === p.id ? { ...r, discord_id: val } : r)); setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); }
-                                } finally { setDiscordSaving((prev) => ({ ...prev, [p.id]: false })); }
-                              }}
-                              placeholder="Discord ID (17-20 digits)"
-                              className="w-36 bg-slate-900 border border-purple-500/60 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none font-mono"
-                            />
-                            <button
-                              disabled={discordSavingRef.current[p.id] || !/^\d{17,20}$/.test(discordEdit[p.id]?.trim() ?? "")}
-                              onClick={async () => {
-                                const val = discordEdit[p.id]?.trim();
-                                if (!val || !/^\d{17,20}$/.test(val)) return;
-                                setDiscordSaving((prev) => ({ ...prev, [p.id]: true }));
-                                try {
-                                  const { data } = await axios.post(`${API_URL}/api/admin/player/${p.id}/discord`, { discord_id: val }, { withCredentials: true });
-                                  if (data.ok) { setProfiles((prev) => prev.map((r) => r.id === p.id ? { ...r, discord_id: val } : r)); setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); }
-                                } finally { setDiscordSaving((prev) => ({ ...prev, [p.id]: false })); }
-                              }}
-                              className="text-green-400 hover:text-green-300 disabled:opacity-30"
-                            >
-                              <Check className="w-3 h-3" />
-                            </button>
-                            <button onClick={() => setDiscordEdit((prev) => ({ ...prev, [p.id]: null }))} className="text-slate-500 hover:text-slate-300">
-                              <X className="w-3 h-3" />
-                            </button>
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            <div className="flex items-center gap-1">
+                              <input
+                                autoFocus
+                                value={discordEdit[p.id] ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  setDiscordEdit((prev) => ({ ...prev, [p.id]: v }));
+                                  clearTimeout(discordLookupTimers.current[p.id]);
+                                  const trimmed = v.trim();
+                                  if (trimmed.length >= 2) {
+                                    discordLookupTimers.current[p.id] = setTimeout(
+                                      () => lookupDiscordUser(p.id, trimmed), 800
+                                    );
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") { setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); setDiscordSaveError((prev) => ({ ...prev, [p.id]: "" })); return; }
+                                  if (e.key === "Enter") {
+                                    const val = discordInfo[p.id]?.discord_id ?? (discordEdit[p.id]?.trim() ?? "");
+                                    saveDiscordId(p.id, val);
+                                  }
+                                }}
+                                placeholder="ID or username"
+                                className="w-36 bg-slate-900 border border-purple-500/60 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none font-mono"
+                              />
+                              <button
+                                disabled={discordSaving[p.id] || (
+                                  !discordInfo[p.id]?.discord_id &&
+                                  !/^\d{17,20}$/.test(discordEdit[p.id]?.trim() ?? "")
+                                )}
+                                onClick={() => {
+                                  const val = discordInfo[p.id]?.discord_id ?? (discordEdit[p.id]?.trim() ?? "");
+                                  saveDiscordId(p.id, val);
+                                }}
+                                className="text-green-400 hover:text-green-300 disabled:opacity-30"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => { setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); setDiscordSaveError((prev) => ({ ...prev, [p.id]: "" })); }}
+                                className="text-slate-500 hover:text-slate-300"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                            {discordLookupLoading[p.id] && (
+                              <span className="text-slate-500 text-[10px] pl-0.5">Looking up…</span>
+                            )}
+                            {!discordLookupLoading[p.id] && discordInfo[p.id] && (
+                              <div className="flex items-center gap-1 pl-0.5">
+                                {discordInfo[p.id]!.avatar_url && (
+                                  <img src={discordInfo[p.id]!.avatar_url!} alt="" className="w-4 h-4 rounded-full shrink-0" />
+                                )}
+                                <span className="text-indigo-300 text-[10px]">{discordInfo[p.id]!.username}</span>
+                                <span className="text-slate-600 text-[10px] font-mono">{discordInfo[p.id]!.discord_id}</span>
+                              </div>
+                            )}
+                            {discordSaveError[p.id] && (
+                              <span className="text-red-400 text-[10px] pl-0.5">{discordSaveError[p.id]}</span>
+                            )}
                           </div>
                         ) : (
                           <div className="flex items-center gap-1 mt-0.5 group">
                             {p.discord_id ? (
                               <>
-                                <AdminDiscordIcon />
-                                <span className="font-mono text-slate-600 text-[10px] select-all">{p.discord_id}</span>
+                                {discordInfo[p.id]?.avatar_url
+                                  ? <img src={discordInfo[p.id]!.avatar_url!} alt="" className="w-3.5 h-3.5 rounded-full shrink-0" />
+                                  : <AdminDiscordIcon />
+                                }
+                                <span className="text-[10px] select-all text-slate-400">
+                                  {discordInfo[p.id]?.username ?? p.discord_id}
+                                </span>
                               </>
                             ) : (
                               <span className="text-red-500/60 text-[10px]">no discord</span>
                             )}
                             <button
-                              onClick={() => setDiscordEdit((prev) => ({ ...prev, [p.id]: "" }))}
+                              onClick={() => {
+                                setDiscordEdit((prev) => ({ ...prev, [p.id]: p.discord_id ?? "" }));
+                                if (p.discord_id && /^\d{17,20}$/.test(p.discord_id)) {
+                                  lookupDiscordUser(p.id, p.discord_id);
+                                }
+                              }}
                               className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-purple-400 transition-opacity"
                             >
                               <Pencil className="w-2.5 h-2.5" />

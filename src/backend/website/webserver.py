@@ -157,6 +157,8 @@ class WebServer:
             "/api/admin/player/{player_id}/splattag", self.sneaky_api.admin_override_splattag)
         self.app.router.add_post(
             "/api/admin/player/{player_id}/discord", self.sneaky_api.admin_set_discord)
+        self.app.router.add_get(
+            "/api/admin/discord-lookup", self.sneaky_api.admin_discord_lookup)
         self.app.router.add_post(
             "/api/admin/player/{player_id}/twitch-native/toggle", self.sneaky_api.admin_toggle_twitch_native)
 
