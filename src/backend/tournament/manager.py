@@ -23,6 +23,18 @@ def _get_profile_manager():
 
 logger = logging.getLogger("TournamentManager")
 
+
+async def _ensure_is_sub_column(cur) -> None:
+    """Add is_sub to tournament_team_members if it doesn't exist yet.
+    ADD COLUMN IF NOT EXISTS requires MySQL 8.0.3+; use try/except for compatibility."""
+    try:
+        await cur.execute(
+            "ALTER TABLE tournament_team_members ADD COLUMN is_sub TINYINT(1) NOT NULL DEFAULT 0"
+        )
+    except Exception as e:
+        if "Duplicate column name" not in str(e):
+            raise
+
 ADJECTIVES = [
     "Booyah", "Fresh", "Inky", "Radical", "Sneaky", "Fierce", "Elite",
     "Turbo", "Blazing", "Oceanic", "Deadly", "Tactical", "Grizzco", "Anarchy",
@@ -642,11 +654,7 @@ class TournamentManager:
     async def get_signups_for_admin(tournament_id: int) -> dict:
         """Return all signups + current pre-team assignments for the admin UI."""
         async with DBContextManager(use_dict=True) as cur:
-            # Ensure is_sub column exists (idempotent migration)
-            await cur.execute(
-                """ALTER TABLE tournament_team_members
-                   ADD COLUMN IF NOT EXISTS is_sub TINYINT(1) NOT NULL DEFAULT 0"""
-            )
+            await _ensure_is_sub_column(cur)
 
             await cur.execute(
                 """SELECT s.id, s.display_name, s.discord_id, s.twitch_username, s.assigned_team_id,
@@ -695,11 +703,7 @@ class TournamentManager:
         teams_data: [{"name": str, "signup_ids": [int, ...], "captain_signup_id": int|None, "sub_signup_ids": [int, ...]}]
         """
         async with DBContextManager() as cur:
-            # Ensure is_sub column exists
-            await cur.execute(
-                """ALTER TABLE tournament_team_members
-                   ADD COLUMN IF NOT EXISTS is_sub TINYINT(1) NOT NULL DEFAULT 0"""
-            )
+            await _ensure_is_sub_column(cur)
 
             await cur.execute(
                 "SELECT status FROM tournaments WHERE id = %s", (tournament_id,)

@@ -609,7 +609,7 @@ export default function AdminPanel({
 
   // ---- Render ------------------------------------------------------------
 
-  const isSignup = tournament.status === "signup";
+  const isSignup = tournament.id !== 0 && tournament.status === "signup";
 
   return (
     <>
