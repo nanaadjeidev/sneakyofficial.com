@@ -649,8 +649,9 @@ class TournamentManager:
                 await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
 
         # Update TrueSkill ratings asynchronously (non-blocking, best-effort)
+        skipped_players: list[str] = []
         try:
-            await _get_profile_manager().update_trueskill_for_match(match_id, winner_team_id)
+            skipped_players = await _get_profile_manager().update_trueskill_for_match(match_id, winner_team_id)
         except Exception as e:
             logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
 
@@ -663,7 +664,11 @@ class TournamentManager:
             "winner_name": winner_name,
         })
         confirmed_by = "Admin override" if is_admin else "Opponent"
-        return True, f"✅ Result confirmed ({confirmed_by})! **{winner_name}** wins!", winner_team_id
+        msg = f"✅ Result confirmed ({confirmed_by})! **{winner_name}** wins!"
+        if skipped_players:
+            names = ", ".join(skipped_players)
+            msg += f"\n⚠️ Stats not updated for: {names} (no linked Discord account)."
+        return True, msg, winner_team_id
 
     @staticmethod
     async def dispute_win(match_id: int) -> tuple[bool, str]:
@@ -944,6 +949,16 @@ class TournamentManager:
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 "SELECT id, name, status, team_size, special_rules, affects_rating FROM tournaments WHERE guild_id = %s AND status IN ('signup','active') ORDER BY created_at DESC LIMIT 1",
+                (guild_id,)
+            )
+            return await cur.fetchone()
+
+    @staticmethod
+    async def get_recent_completed_tournament(guild_id: int) -> Optional[dict]:
+        """Return the most recently completed tournament for a guild, or None."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT id, name, status, team_size, special_rules, affects_rating FROM tournaments WHERE guild_id = %s AND status = 'complete' ORDER BY created_at DESC LIMIT 1",
                 (guild_id,)
             )
             return await cur.fetchone()

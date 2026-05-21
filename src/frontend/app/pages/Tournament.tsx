@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
+import confetti from "canvas-confetti";
 import { Helmet } from "react-helmet";
 import axios from "axios";
 import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X } from "lucide-react";
@@ -745,15 +746,27 @@ function TeamModal({ team, rounds, onClose }: { team: Team; rounds: Round[]; onC
 
 // ---- Winner banner --------------------------------------------------------
 
-function WinnerBanner({ team }: { team: Team }) {
+function WinnerBanner({ team, celebrate }: { team: Team; celebrate?: boolean }) {
+  useEffect(() => {
+    if (!celebrate) return;
+    const burst = (x: number, angle: number) =>
+      confetti({ particleCount: 80, spread: 70, angle, origin: { x, y: 0.6 }, colors: ["#facc15","#fbbf24","#a78bfa","#60a5fa","#34d399","#f87171"] });
+
+    burst(0.2, 60);
+    burst(0.8, 120);
+    const t1 = setTimeout(() => { burst(0.1, 80); burst(0.9, 100); }, 400);
+    const t2 = setTimeout(() => { burst(0.5, 90); }, 900);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [celebrate]);
+
   return (
-    <div className="mb-8 rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-950/70 via-amber-900/30 to-slate-900/50 backdrop-blur-sm p-8 text-center shadow-2xl shadow-yellow-900/20">
-      <Crown className="w-14 h-14 text-yellow-400 mx-auto mb-3" />
-      <p className="text-xs font-bold text-yellow-500/80 uppercase tracking-[0.3em] mb-2">
+    <div className="mb-8 rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-950/70 via-amber-900/30 to-slate-900/50 backdrop-blur-sm p-10 text-center shadow-2xl shadow-yellow-900/30">
+      <Crown className="w-16 h-16 text-yellow-400 mx-auto mb-4 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]" />
+      <p className="text-xs font-bold text-yellow-500/80 uppercase tracking-[0.3em] mb-3">
         Tournament Champion
       </p>
-      <p className="text-3xl font-black text-white">{team.name}</p>
-      <p className="text-sm text-slate-400 mt-2">{team.members.join(" · ")}</p>
+      <p className="text-4xl font-black text-white mb-2">{team.name}</p>
+      <p className="text-sm text-slate-400">{team.members.join(" · ")}</p>
     </div>
   );
 }
@@ -1269,6 +1282,12 @@ export default function Tournament() {
     return fm.winner_id === fm.team1?.id ? fm.team1 : fm.team2;
   })();
 
+  const [celebrated, setCelebrated] = useState(false);
+  const celebrate = !!winner && !celebrated;
+  useEffect(() => {
+    if (celebrate) setCelebrated(true);
+  }, [celebrate]);
+
   return (
     <PageWrapper>
       <Helmet>
@@ -1345,7 +1364,7 @@ export default function Tournament() {
         )}
 
         {/* Winner banner (above bracket when complete) */}
-        {winner && <WinnerBanner team={winner} />}
+        {winner && <WinnerBanner team={winner} celebrate={celebrate} />}
 
         {/* Special rules banner */}
         {tournament?.special_rules && (

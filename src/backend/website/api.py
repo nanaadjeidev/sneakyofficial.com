@@ -478,6 +478,8 @@ class SneakyApi:
             elif guild_id_param:
                 tournament = await TournamentManager.get_active_tournament(int(guild_id_param))
                 if not tournament:
+                    tournament = await TournamentManager.get_recent_completed_tournament(int(guild_id_param))
+                if not tournament:
                     return web.json_response({"tournament": None}, status=200)
                 data = await TournamentManager.get_bracket_data(tournament["id"])
             else:

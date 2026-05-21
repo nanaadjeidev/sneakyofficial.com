@@ -300,8 +300,9 @@ class ProfileManager:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    async def update_trueskill_for_match(match_id: int, winner_team_id: int) -> None:
-        """Update individual TrueSkill ratings for all 8 players in a match."""
+    async def update_trueskill_for_match(match_id: int, winner_team_id: int) -> list[str]:
+        """Update individual TrueSkill ratings for all players in a match.
+        Returns display names of any players whose stats could not be updated (no Discord ID)."""
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 """SELECT m.team1_id, m.team2_id, m.tournament_id, t.affects_rating
@@ -312,7 +313,7 @@ class ProfileManager:
             )
             match = await cur.fetchone()
             if not match:
-                return
+                return []
 
             affects_rating = bool(match["affects_rating"])
             loser_team_id = (
@@ -321,7 +322,8 @@ class ProfileManager:
 
             async def get_team_players(team_id):
                 await cur.execute(
-                    """SELECT s.discord_id, COALESCE(p.trueskill_mu, 25.0) AS mu,
+                    """SELECT s.discord_id, s.display_name,
+                              COALESCE(p.trueskill_mu, 25.0) AS mu,
                               COALESCE(p.trueskill_sigma, 8.333) AS sigma
                        FROM tournament_team_members ttm
                        JOIN tournament_signups s ON s.id = ttm.signup_id
@@ -330,6 +332,8 @@ class ProfileManager:
                     (team_id,)
                 )
                 return list(await cur.fetchall())
+
+            skipped: list[str] = []
 
             winners = await get_team_players(winner_team_id)
             losers = await get_team_players(loser_team_id)
@@ -341,6 +345,7 @@ class ProfileManager:
 
                 for player, new_r in zip(winners, new_w):
                     if not player["discord_id"]:
+                        skipped.append(player["display_name"])
                         continue
                     await cur.execute(
                         """INSERT INTO player_profiles (discord_id, display_name, trueskill_mu, trueskill_sigma, matches_won, rank, first_played_at)
@@ -356,6 +361,7 @@ class ProfileManager:
 
                 for player, new_r in zip(losers, new_l):
                     if not player["discord_id"]:
+                        skipped.append(player["display_name"])
                         continue
                     await cur.execute(
                         """INSERT INTO player_profiles (discord_id, display_name, trueskill_mu, trueskill_sigma, matches_lost, rank, first_played_at)
@@ -372,6 +378,7 @@ class ProfileManager:
                 # Still track match participation but don't touch TrueSkill
                 for player in winners:
                     if not player["discord_id"]:
+                        skipped.append(player["display_name"])
                         continue
                     await cur.execute(
                         """INSERT INTO player_profiles (discord_id, display_name, matches_won, rank, first_played_at)
@@ -384,6 +391,7 @@ class ProfileManager:
                     )
                 for player in losers:
                     if not player["discord_id"]:
+                        skipped.append(player["display_name"])
                         continue
                     await cur.execute(
                         """INSERT INTO player_profiles (discord_id, display_name, matches_lost, rank, first_played_at)
@@ -397,6 +405,7 @@ class ProfileManager:
 
         # Update tournament wins for the final match winner
         await ProfileManager._check_tournament_winner(match["tournament_id"], winner_team_id, affects_rating=affects_rating)
+        return skipped
 
     @staticmethod
     async def _check_tournament_winner(tournament_id: int, last_winner_team_id: int, affects_rating: bool = True) -> None:
