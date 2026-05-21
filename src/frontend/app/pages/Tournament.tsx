@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react";
+import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } from "react";
 import { Helmet } from "react-helmet";
 import axios from "axios";
 import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X } from "lucide-react";
@@ -40,12 +40,12 @@ interface MyMatch {
   id: number;
   round: number;
   status: "pending" | "awaiting_confirmation";
-  team1_id: number;
-  team2_id: number;
+  team1_id: number | null;
+  team2_id: number | null;
   team1_name: string | null;
   team2_name: string | null;
   player_team_id: number;
-  opposing_team_id: number;
+  opposing_team_id: number | null;
   reported_winner_id: number | null;
   is_home_team: boolean;
   room_code: string | null;
@@ -825,6 +825,7 @@ function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
 
 function MatchReportCard({
   match,
+  opponentMatchId,
   loading,
   message,
   onReport,
@@ -832,15 +833,17 @@ function MatchReportCard({
   onDispute,
 }: {
   match: MyMatch;
+  opponentMatchId?: number | null;
   loading: boolean;
   message: string | null;
   onReport: (result: "win" | "loss") => void;
   onConfirm: () => void;
   onDispute: () => void;
 }) {
-  const myTeamName   = match.player_team_id === match.team1_id ? match.team1_name : match.team2_name;
+  const myTeamName    = match.player_team_id === match.team1_id ? match.team1_name : match.team2_name;
   const theirTeamName = match.player_team_id === match.team1_id ? match.team2_name : match.team1_name;
-  const reportedWinnerIsMe = match.reported_winner_id === match.player_team_id;
+  const hasOpponent   = !!match.opposing_team_id;
+  const reportedWinnerIsMe   = match.reported_winner_id === match.player_team_id;
   const reportedWinnerIsThem = match.reported_winner_id !== null && match.reported_winner_id !== match.player_team_id;
 
   return (
@@ -848,31 +851,44 @@ function MatchReportCard({
       <div className="flex items-center gap-2 mb-3">
         <Swords className="w-4 h-4 text-blue-400" />
         <span className="text-sm font-semibold text-blue-300">Your Match</span>
-        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ml-1 ${
-          match.is_home_team
-            ? "bg-amber-900/30 text-amber-300 border-amber-600/40"
-            : "bg-slate-800/60 text-slate-400 border-slate-600/40"
-        }`}>
-          {match.is_home_team ? "🏠 Home" : "✈️ Away"}
-        </span>
+        {hasOpponent && (
+          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ml-1 ${
+            match.is_home_team
+              ? "bg-amber-900/30 text-amber-300 border-amber-600/40"
+              : "bg-slate-800/60 text-slate-400 border-slate-600/40"
+          }`}>
+            {match.is_home_team ? "Home" : "Away"}
+          </span>
+        )}
         <span className="text-xs text-slate-500 ml-auto">Round {match.round}</span>
       </div>
+
       <p className="text-sm text-slate-300 mb-4">
         <span className="text-white font-semibold">{myTeamName ?? "Your Team"}</span>
         <span className="text-slate-500 mx-2">vs</span>
-        <span className="text-white font-semibold">{theirTeamName ?? "Opponents"}</span>
+        {theirTeamName
+          ? <span className="text-white font-semibold">{theirTeamName}</span>
+          : <span className="text-slate-500 italic text-xs">
+              {opponentMatchId ? `Match #${opponentMatchId} winner` : "Opponent TBD"}
+            </span>
+        }
       </p>
-      {match.is_home_team && match.room_code && (
+
+      {hasOpponent && match.is_home_team && match.room_code && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
-          <p className="text-xs text-amber-400/80 mb-1">You are the home team — create the private lobby</p>
+          <p className="text-xs text-amber-400/80 mb-1">You are the home team. Create the private lobby.</p>
           <p className="text-lg font-mono font-bold tracking-widest text-amber-300">{match.room_code}</p>
         </div>
       )}
-      {!match.is_home_team && (
-        <p className="mb-4 text-xs text-slate-500">You are the away team — wait for the home team to share the room code.</p>
+      {hasOpponent && !match.is_home_team && (
+        <p className="mb-4 text-xs text-slate-500">You are the away team. Wait for the home team to share the room code.</p>
       )}
 
-      {match.status === "pending" && (
+      {!hasOpponent && (
+        <p className="mb-4 text-xs text-slate-500">Waiting for your opponent to be decided from the previous match.</p>
+      )}
+
+      {match.status === "pending" && hasOpponent && (
         <div className="flex gap-2">
           <button
             onClick={() => onReport("win")}
@@ -893,7 +909,7 @@ function MatchReportCard({
 
       {match.status === "awaiting_confirmation" && reportedWinnerIsMe && (
         <p className="text-sm text-yellow-400/80 text-center py-1">
-          ⏳ Waiting for {theirTeamName ?? "opponents"} to confirm...
+          Waiting for {theirTeamName ?? "opponents"} to confirm...
         </p>
       )}
 
@@ -908,14 +924,14 @@ function MatchReportCard({
               disabled={loading}
               className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
             >
-              ✅ Confirm
+              Confirm
             </button>
             <button
               onClick={onDispute}
               disabled={loading}
               className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50"
             >
-              ⚠️ Dispute
+              Dispute
             </button>
           </div>
         </div>
@@ -1197,6 +1213,17 @@ export default function Tournament() {
   const rounds      = data?.rounds ?? [];
   const totalRounds = rounds.length;
 
+  const opponentMatchId = useMemo(() => {
+    if (!myMatch) return null;
+    for (const round of rounds) {
+      const m = round.matches.find((m) => m.id === myMatch.id);
+      if (m) {
+        return myMatch.player_team_id === myMatch.team1_id ? m.feeder2_match_id : m.feeder1_match_id;
+      }
+    }
+    return null;
+  }, [myMatch, rounds]);
+
   // ---- Drag-to-pan for full bracket view ----------------------------------
   const bracketScrollRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -1281,6 +1308,7 @@ export default function Tournament() {
         {loggedIn && !myMatchLoading && myMatch && (
           <MatchReportCard
             match={myMatch}
+            opponentMatchId={opponentMatchId}
             loading={reportLoading}
             message={reportMsg}
             onReport={handleReport}
