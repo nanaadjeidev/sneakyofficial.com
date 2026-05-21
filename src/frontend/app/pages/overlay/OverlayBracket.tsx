@@ -229,9 +229,9 @@ function FullOverlay({ data }: { data: BracketData }) {
   }
 
   return (
-    <div data-overlay className="w-screen h-screen flex flex-col" style={{ background: "rgba(6,6,14,0.92)", backdropFilter: "blur(24px)" }}>
+    <div data-overlay className="flex flex-col" style={{ width: 800, height: 600, background: "rgba(6,6,14,0.82)", backdropFilter: "blur(28px)", WebkitBackdropFilter: "blur(28px)", overflow: "hidden" }}>
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-3 border-b border-white/8 shrink-0">
+      <div className="flex items-center gap-3 px-6 py-3 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
         <span className="text-sm font-bold tracking-[0.2em] text-white/60 uppercase">{data.tournament.name}</span>
         <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
