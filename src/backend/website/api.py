@@ -467,6 +467,21 @@ class SneakyApi:
                 )
         return web.json_response({"ok": True, "message": "Schedule saved."})
 
+    async def serve_tournament_list(self, request: Request) -> web.Response:
+        """Return all completed tournaments for a guild (public)."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"tournaments": []})
+        try:
+            tournaments = await TournamentManager.get_tournament_list(int(guild_id_param))
+            for t in tournaments:
+                if t.get("created_at"):
+                    t["created_at"] = t["created_at"].isoformat()
+            return web.json_response({"tournaments": tournaments})
+        except Exception as e:
+            logger.exception("Tournament list error: %s", e)
+            return web.json_response({"error": "Server error"}, status=500)
+
     async def serve_tournament_current(self, request: Request) -> web.Response:
         """Return the current active tournament bracket data (public, no auth needed)."""
         guild_id_param = request.rel_url.query.get("guild_id")

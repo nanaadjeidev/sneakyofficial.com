@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } fr
 import confetti from "canvas-confetti";
 import { Helmet } from "react-helmet";
 import axios from "axios";
-import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X } from "lucide-react";
+import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X, History } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import AdminPanel, { type Signup, type PreTeam } from "../components/tournament/AdminPanel";
 import { useAuth } from "../hooks/useAuth";
@@ -101,6 +101,13 @@ interface Tournament {
 interface BracketData {
   tournament: Tournament;
   rounds: Round[];
+}
+
+interface TournamentSummary {
+  id: number;
+  name: string;
+  status: string;
+  created_at: string;
 }
 
 type RegisterMatchFn = (roundNum: number, matchNum: number, el: HTMLDivElement | null) => void;
@@ -746,19 +753,7 @@ function TeamModal({ team, rounds, onClose }: { team: Team; rounds: Round[]; onC
 
 // ---- Winner banner --------------------------------------------------------
 
-function WinnerBanner({ team, celebrate }: { team: Team; celebrate?: boolean }) {
-  useEffect(() => {
-    if (!celebrate) return;
-    const burst = (x: number, angle: number) =>
-      confetti({ particleCount: 80, spread: 70, angle, origin: { x, y: 0.6 }, colors: ["#facc15","#fbbf24","#a78bfa","#60a5fa","#34d399","#f87171"] });
-
-    burst(0.2, 60);
-    burst(0.8, 120);
-    const t1 = setTimeout(() => { burst(0.1, 80); burst(0.9, 100); }, 400);
-    const t2 = setTimeout(() => { burst(0.5, 90); }, 900);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [celebrate]);
-
+function WinnerBanner({ team }: { team: Team }) {
   return (
     <div className="mb-8 rounded-2xl border border-yellow-500/40 bg-gradient-to-br from-yellow-950/70 via-amber-900/30 to-slate-900/50 backdrop-blur-sm p-10 text-center shadow-2xl shadow-yellow-900/30">
       <Crown className="w-16 h-16 text-yellow-400 mx-auto mb-4 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]" />
@@ -986,15 +981,23 @@ export default function Tournament() {
   const [myMatchLoading,      setMyMatchLoading]      = useState(false);
   const [reportLoading,       setReportLoading]       = useState(false);
   const [reportMsg,           setReportMsg]           = useState<string | null>(null);
+  const [history,             setHistory]             = useState<TournamentSummary[]>([]);
+  const [historyOpen,         setHistoryOpen]         = useState(false);
+  const [viewingId,           setViewingId]           = useState<number | null>(null);
 
   const isAdminRef      = useRef(isAdmin);
   const fetchAdminDataRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const fetchDataRef      = useRef<() => Promise<void>>(() => Promise.resolve());
+  const fetchDataRef      = useRef<(id?: number | null) => Promise<void>>(() => Promise.resolve());
   isAdminRef.current = !!isAdmin;
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (tournamentId?: number | null) => {
     try {
-      const params = GUILD_ID ? { guild_id: GUILD_ID } : {};
+      let params: Record<string, string | number>;
+      if (tournamentId) {
+        params = { id: tournamentId };
+      } else {
+        params = GUILD_ID ? { guild_id: GUILD_ID } : {};
+      }
       const { data: res } = await axios.get<BracketData>(`${API_URL}/api/tournament`, { params });
       if (res?.tournament) {
         setData(res);
@@ -1008,6 +1011,16 @@ export default function Tournament() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    if (!GUILD_ID) return;
+    try {
+      const { data: res } = await axios.get<{ tournaments: TournamentSummary[] }>(`${API_URL}/api/tournament/list`, {
+        params: { guild_id: GUILD_ID },
+      });
+      setHistory(res.tournaments ?? []);
+    } catch { /* non-critical */ }
   }, []);
 
   const fetchAdminData = useCallback(async () => {
@@ -1141,10 +1154,18 @@ export default function Tournament() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-    const id = setInterval(fetchData, POLL_MS);
-    return () => clearInterval(id);
-  }, [fetchData]);
+    fetchHistory();
+  }, [fetchHistory]);
+
+  useEffect(() => {
+    if (viewingId) {
+      fetchData(viewingId);
+    } else {
+      fetchData();
+      const id = setInterval(fetchData, POLL_MS);
+      return () => clearInterval(id);
+    }
+  }, [fetchData, viewingId]);
 
   useEffect(() => {
     if (isAdmin) {
@@ -1282,11 +1303,24 @@ export default function Tournament() {
     return fm.winner_id === fm.team1?.id ? fm.team1 : fm.team2;
   })();
 
-  const [celebrated, setCelebrated] = useState(false);
-  const celebrate = !!winner && !celebrated;
+  const confettiFiredRef = useRef(false);
   useEffect(() => {
-    if (celebrate) setCelebrated(true);
-  }, [celebrate]);
+    if (!winner || viewingId || confettiFiredRef.current) return;
+    confettiFiredRef.current = true;
+    const burst = (x: number, angle: number) =>
+      confetti({ particleCount: 80, spread: 70, angle, origin: { x, y: 0.6 }, colors: ["#facc15","#fbbf24","#a78bfa","#60a5fa","#34d399","#f87171"] });
+    burst(0.2, 60);
+    burst(0.8, 120);
+    setTimeout(() => { burst(0.1, 80); burst(0.9, 100); }, 400);
+    setTimeout(() => { burst(0.5, 90); }, 900);
+  }, [winner, viewingId]);
+
+  useEffect(() => {
+    if (!historyOpen) return;
+    const handler = () => setHistoryOpen(false);
+    document.addEventListener("click", handler, { capture: true });
+    return () => document.removeEventListener("click", handler, { capture: true });
+  }, [historyOpen]);
 
   return (
     <PageWrapper>
@@ -1305,7 +1339,15 @@ export default function Tournament() {
             {tournament && (
               <div className="flex items-center gap-3 mt-1">
                 <StatusBadge status={tournament.status} />
-                {lastUpdated && (
+                {viewingId && (
+                  <button
+                    onClick={() => { setViewingId(null); setData(null); setLoading(true); confettiFiredRef.current = false; }}
+                    className="text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2"
+                  >
+                    ← Back to current
+                  </button>
+                )}
+                {!viewingId && lastUpdated && (
                   <span className="text-xs text-slate-500">
                     Updated {lastUpdated.toLocaleTimeString()}
                   </span>
@@ -1313,14 +1355,47 @@ export default function Tournament() {
               </div>
             )}
           </div>
-          {!authLoading && !isAdmin && (
-            <a
-              href={`${API_URL}/api/auth/discord/login`}
-              className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1 shrink-0"
-            >
-              <LogIn className="w-3.5 h-3.5" /> Admin login
-            </a>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {history.length > 0 && (
+              <div className="relative">
+                <button
+                  onClick={() => setHistoryOpen((o) => !o)}
+                  className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 transition-colors"
+                >
+                  <History className="w-3.5 h-3.5" /> Past Tournaments
+                </button>
+                {historyOpen && (
+                  <div className="absolute right-0 top-full mt-1 w-64 rounded-xl border border-slate-700 bg-slate-900 shadow-2xl z-30 overflow-hidden">
+                    <div className="px-3 py-2 border-b border-slate-800 text-xs font-semibold text-slate-400 uppercase tracking-widest">
+                      Previous Tournaments
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      {history.map((t) => (
+                        <button
+                          key={t.id}
+                          onClick={() => { setViewingId(t.id); setData(null); setLoading(true); setHistoryOpen(false); confettiFiredRef.current = false; }}
+                          className={`w-full text-left px-3 py-2.5 hover:bg-slate-800 transition-colors border-b border-slate-800/60 last:border-0 ${viewingId === t.id ? "bg-slate-800/80" : ""}`}
+                        >
+                          <div className="text-sm text-slate-200 font-medium truncate">{t.name}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">
+                            {new Date(t.created_at).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {!authLoading && !isAdmin && (
+              <a
+                href={`${API_URL}/api/auth/discord/login`}
+                className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"
+              >
+                <LogIn className="w-3.5 h-3.5" /> Admin login
+              </a>
+            )}
+          </div>
         </div>
 
         {/* Match report card — logged-in non-admin players in an active match */}
@@ -1364,7 +1439,7 @@ export default function Tournament() {
         )}
 
         {/* Winner banner (above bracket when complete) */}
-        {winner && <WinnerBanner team={winner} celebrate={celebrate} />}
+        {winner && <WinnerBanner team={winner} />}
 
         {/* Special rules banner */}
         {tournament?.special_rules && (

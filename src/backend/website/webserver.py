@@ -130,6 +130,8 @@ class WebServer:
         self.app.router.add_post(
             "/api/tournament/dispute", self.sneaky_api.tournament_web_dispute)
         self.app.router.add_get(
+            "/api/tournament/list", self.sneaky_api.serve_tournament_list)
+        self.app.router.add_get(
             "/api/tournament", self.sneaky_api.serve_tournament_current)
         self.app.router.add_get(
             "/api/tournament/admin", self.sneaky_api.tournament_admin_get)

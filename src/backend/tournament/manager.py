@@ -967,6 +967,17 @@ class TournamentManager:
             return await cur.fetchone()
 
     @staticmethod
+    async def get_tournament_list(guild_id: int) -> list[dict]:
+        """Return all completed tournaments for a guild, newest first."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT id, name, status, created_at FROM tournaments WHERE guild_id = %s AND status = 'complete' ORDER BY created_at DESC",
+                (guild_id,)
+            )
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+    @staticmethod
     async def get_bracket_data(tournament_id: int) -> dict:
         """Return full bracket data for the API / frontend."""
         async with DBContextManager(use_dict=True) as cur:
