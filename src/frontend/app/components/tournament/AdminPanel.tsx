@@ -1,6 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon } from "lucide-react";
+import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -15,6 +15,38 @@ export interface Signup {
   twitch_username: string | null;
   assigned_team_id: number | null;
   rating: number;
+  rank: number | null;
+  rank_tier: number | null;
+  splattag: string | null;
+}
+
+export const RANK_NAMES: Record<number, string> = {
+  1: "Starter Squid", 2: "Amateur Squid", 3: "Cool Squid",
+  4: "Pro Squid", 5: "Legendary Squid", 6: "God Squid",
+};
+export const RANK_EMOJIS: Record<number, string> = {
+  1: "🦑", 2: "🦑🦑", 3: "⭐", 4: "⭐⭐", 5: "💎", 6: "👑",
+};
+export const TIER_ROMAN: Record<number, string> = { 1: "I", 2: "II", 3: "III" };
+
+export const RANK_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Unranked" },
+  ...[1, 2, 3, 4, 5, 6].flatMap((r) =>
+    [1, 2, 3].map((t) => ({
+      value: `${r}-${t}`,
+      label: `${RANK_EMOJIS[r]} ${RANK_NAMES[r]} ${TIER_ROMAN[t]}`,
+    }))
+  ),
+];
+
+export function rankScore(rank: number | null | undefined, tier: number | null | undefined): number {
+  if (!rank) return 0;
+  return (rank - 1) * 3 + (tier ?? 1);
+}
+
+export function rankLabel(rank: number | null | undefined, tier: number | null | undefined): string {
+  if (!rank) return "Unranked";
+  return `${RANK_EMOJIS[rank]} ${RANK_NAMES[rank]} ${TIER_ROMAN[tier ?? 1]}`;
 }
 
 export interface PreTeam {
@@ -29,6 +61,8 @@ interface AdminTournament {
   name: string;
   status: string;
   team_size?: number;
+  special_rules?: string | null;
+  affects_rating?: boolean;
 }
 
 interface LocalTeam {
@@ -72,8 +106,11 @@ function PlayerPill({
       onDragStart={onDragStart}
       className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-700/60 border border-slate-600/50 text-sm text-slate-200 cursor-grab active:cursor-grabbing select-none"
     >
-      <span className="truncate max-w-[140px]">{signup.display_name}</span>
-      {signup.twitch_username && (
+      <span className="truncate max-w-[120px]">{signup.display_name}</span>
+      {signup.rank && (
+        <span className="text-xs text-slate-400 shrink-0">{rankLabel(signup.rank, signup.rank_tier)}</span>
+      )}
+      {signup.twitch_username && !signup.rank && (
         <span className="text-xs text-purple-400 shrink-0">twitch</span>
       )}
       {onRemove && (
@@ -184,11 +221,13 @@ export default function AdminPanel({
   signups,
   preTeams,
   onRefresh,
+  onCancel,
 }: {
   tournament: AdminTournament;
   signups: Signup[];
   preTeams: PreTeam[];
   onRefresh: () => void;
+  onCancel: () => void;
 }) {
   const teamSize = tournament.team_size ?? 4;
   const signupsById = new Map(signups.map((s) => [s.id, s]));
@@ -202,6 +241,8 @@ export default function AdminPanel({
   const [showCreate, setShowCreate] = useState(false);
   const [newTournamentName, setNewTournamentName] = useState("");
   const [newTeamSize, setNewTeamSize] = useState(4);
+  const [newSpecialRules, setNewSpecialRules] = useState("");
+  const [newAffectsRating, setNewAffectsRating] = useState(true);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
 
@@ -262,11 +303,11 @@ export default function AdminPanel({
   };
 
   const autoAssignAll = () => {
-    // Sort pool by rating descending (best players first) for snake draft
+    // Sort by rank score desc (best first); unranked (0) go last
     const sortedPool = [...unassigned].sort((a, b) => {
-      const rA = signupsById.get(a)?.rating ?? 25;
-      const rB = signupsById.get(b)?.rating ?? 25;
-      return rB - rA;
+      const sA = rankScore(signupsById.get(a)?.rank, signupsById.get(a)?.rank_tier);
+      const sB = rankScore(signupsById.get(b)?.rank, signupsById.get(b)?.rank_tier);
+      return sB - sA;
     });
 
     // Deep-copy existing teams so we don't mutate state
@@ -321,7 +362,7 @@ export default function AdminPanel({
     if (!confirm("This will close sign-ups and generate the bracket. Continue?")) return;
     setLocking(true);
     try {
-      const { data } = await axios.post(`${API_URL}/api/tournament/admin/lock`, { guild_id: parseInt(GUILD_ID) }, { withCredentials: true });
+      const { data } = await axios.post(`${API_URL}/api/tournament/admin/lock`, { guild_id: GUILD_ID }, { withCredentials: true });
       flash(data.message, data.ok);
       if (data.ok) onRefresh();
     } catch {
@@ -337,11 +378,23 @@ export default function AdminPanel({
     try {
       const { data } = await axios.post(
         `${API_URL}/api/tournament/admin/create`,
-        { guild_id: parseInt(GUILD_ID), name: newTournamentName.trim(), team_size: newTeamSize },
+        {
+          guild_id: GUILD_ID,
+          name: newTournamentName.trim(),
+          team_size: newTeamSize,
+          special_rules: newSpecialRules.trim() || null,
+          affects_rating: newAffectsRating,
+        },
         { withCredentials: true }
       );
       flash(data.message, data.ok);
-      if (data.ok) { setShowCreate(false); setNewTournamentName(""); onRefresh(); }
+      if (data.ok) {
+        setShowCreate(false);
+        setNewTournamentName("");
+        setNewSpecialRules("");
+        setNewAffectsRating(true);
+        onRefresh();
+      }
     } catch {
       flash("Failed to create tournament.", false);
     } finally {
@@ -353,9 +406,13 @@ export default function AdminPanel({
     if (!confirm(`Cancel "${tournament.name}"? This cannot be undone.`)) return;
     setCancelling(true);
     try {
-      const { data } = await axios.post(`${API_URL}/api/tournament/admin/cancel`, { guild_id: parseInt(GUILD_ID) }, { withCredentials: true });
+      const { data } = await axios.post(`${API_URL}/api/tournament/admin/cancel`, { guild_id: GUILD_ID }, { withCredentials: true });
       flash(data.message, data.ok);
-      if (data.ok) onRefresh();
+      if (data.ok) {
+        setTeams([]);
+        setUnassigned([]);
+        onCancel();
+      }
     } catch {
       flash("Failed to cancel tournament.", false);
     } finally {
@@ -371,10 +428,19 @@ export default function AdminPanel({
     <div className="rounded-xl border border-yellow-500/30 bg-yellow-900/10 p-4 mb-8">
       {/* Admin header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Trophy className="w-5 h-5 text-yellow-400" />
           <span className="font-bold text-yellow-300 text-sm">Admin Panel</span>
           <span className="text-slate-400 text-xs">— {tournament.name}</span>
+          {tournament.special_rules && (
+            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+              tournament.affects_rating === false
+                ? "bg-amber-900/30 text-amber-300 border-amber-600/40"
+                : "bg-blue-900/30 text-blue-300 border-blue-600/40"
+            }`}>
+              {tournament.affects_rating === false ? "Special rules · no rating" : "Special rules"}
+            </span>
+          )}
         </div>
         <div className="flex gap-2 flex-wrap">
           {!showCreate && (
@@ -406,30 +472,53 @@ export default function AdminPanel({
 
       {/* Create new tournament form */}
       {showCreate && (
-        <div className="mb-4 p-3 rounded-lg border border-slate-700 bg-slate-800/40 flex flex-wrap gap-2">
-          <input
-            className="flex-1 min-w-[160px] bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
-            placeholder="Tournament name…"
-            value={newTournamentName}
-            onChange={(e) => setNewTournamentName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTournament()}
+        <div className="mb-4 p-3 rounded-lg border border-slate-700 bg-slate-800/40 flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
+            <input
+              className="flex-1 min-w-[160px] bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
+              placeholder="Tournament name…"
+              value={newTournamentName}
+              onChange={(e) => setNewTournamentName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !newSpecialRules && createTournament()}
+            />
+            <select
+              className="bg-slate-900/60 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
+              value={newTeamSize}
+              onChange={(e) => setNewTeamSize(parseInt(e.target.value))}
+              title="Team size"
+            >
+              <option value={4}>4v4</option>
+              <option value={3}>3v3</option>
+              <option value={2}>2v2</option>
+            </select>
+            <button onClick={createTournament} disabled={creating} className="px-3 py-1.5 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50">
+              {creating ? "…" : "Create"}
+            </button>
+            <button onClick={() => { setShowCreate(false); setNewSpecialRules(""); setNewAffectsRating(true); }} className="text-slate-500 hover:text-slate-300 px-1">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          <textarea
+            className="w-full bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400 resize-none"
+            rows={2}
+            placeholder="Special rules (optional) — e.g. no chargers, specific weapon restrictions…"
+            value={newSpecialRules}
+            onChange={(e) => setNewSpecialRules(e.target.value)}
           />
-          <select
-            className="bg-slate-900/60 border border-slate-600 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
-            value={newTeamSize}
-            onChange={(e) => setNewTeamSize(parseInt(e.target.value))}
-            title="Team size"
-          >
-            <option value={4}>4v4</option>
-            <option value={3}>3v3</option>
-            <option value={2}>2v2</option>
-          </select>
-          <button onClick={createTournament} disabled={creating} className="px-3 py-1.5 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50">
-            {creating ? "…" : "Create"}
-          </button>
-          <button onClick={() => setShowCreate(false)} className="text-slate-500 hover:text-slate-300 px-1">
-            <X className="w-4 h-4" />
-          </button>
+          {newSpecialRules.trim() && (
+            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={newAffectsRating}
+                onChange={(e) => setNewAffectsRating(e.target.checked)}
+                className="w-4 h-4 accent-purple-500"
+              />
+              <span>Counts towards rating &amp; normal tournament wins</span>
+              {!newAffectsRating && (
+                <span className="text-xs text-amber-400 ml-1">(special wins only)</span>
+              )}
+            </label>
+          )}
         </div>
       )}
 
@@ -657,12 +746,17 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
 
 // ---- Player profiles panel (admin-only) ----------------------------------
 
-interface ProfileRow {
-  discord_id: string;
+export interface ProfileRow {
+  id: number;
+  discord_id: string | null;
   display_name: string;
   twitch_username: string | null;
+  twitch_native: boolean;
   splattag: string | null;
   rank: number | null;
+  rank_tier: number | null;
+  predicted_rank: number | null;
+  predicted_rank_tier: number | null;
   rank_name: string;
   rank_emoji: string;
   rating: number;
@@ -673,36 +767,35 @@ interface ProfileRow {
   tournaments_played: number;
 }
 
-const RANK_COLORS: Record<number, string> = {
-  1: "text-slate-400",
-  2: "text-green-400",
-  3: "text-blue-400",
-  4: "text-purple-400",
-  5: "text-amber-400",
-  6: "text-yellow-300",
-};
-
 function PlayerProfilesSection() {
   const [open, setOpen] = useState(false);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [search, setSearch] = useState("");
+  const [rankSaving, setRankSaving] = useState<Record<string, boolean>>({});
+  const [splattagEdit, setSplattagEdit] = useState<Record<string, string | null>>({});
+  const [splattagSaving, setSplattagSaving] = useState<Record<string, boolean>>({});
+  const [nativeToggling, setNativeToggling] = useState<Record<number, boolean>>({});
+  const [discordEdit, setDiscordEdit] = useState<Record<number, string | null>>({});
+  const discordSavingRef = useRef<Record<number, boolean>>({});
+  const setDiscordSaving = (fn: (prev: Record<number, boolean>) => Record<number, boolean>) => {
+    discordSavingRef.current = fn(discordSavingRef.current);
+  };
 
-  const load = useCallback(async () => {
-    if (loaded) return;
+  const load = useCallback(async (q?: string) => {
     setLoading(true);
     try {
-      const { data } = await axios.get(`${API_URL}/api/leaderboard`, {
-        params: { sort: "rating", limit: 100 },
+      const { data } = await axios.get(`${API_URL}/api/admin/players`, {
+        params: q ? { search: q } : {},
+        withCredentials: true,
       });
-      setProfiles(data.leaderboard ?? []);
-      setLoaded(true);
+      setProfiles(data.players ?? []);
     } catch {
-      // silently fail — admin can retry by toggling
+      // silently fail
     } finally {
       setLoading(false);
     }
-  }, [loaded]);
+  }, []);
 
   const toggle = () => {
     setOpen((prev) => {
@@ -710,6 +803,60 @@ function PlayerProfilesSection() {
       if (next) load();
       return next;
     });
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    load(search || undefined);
+  };
+
+  const setRank = async (playerId: number, value: string, rankType: "actual" | "predicted") => {
+    const key = `${playerId}-${rankType}`;
+    setRankSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      let rank: number | null = null;
+      let rank_tier: number | null = null;
+      if (value) {
+        const [r, t] = value.split("-").map(Number);
+        rank = r; rank_tier = t;
+      }
+      await axios.post(
+        `${API_URL}/api/admin/player/${playerId}/rank`,
+        { rank, rank_tier, rank_type: rankType },
+        { withCredentials: true },
+      );
+      setProfiles((prev) =>
+        prev.map((p) => {
+          if (p.id !== playerId) return p;
+          if (rankType === "predicted") {
+            return { ...p, predicted_rank: rank, predicted_rank_tier: rank_tier };
+          }
+          return { ...p, rank, rank_tier, rank_name: rank ? rankLabel(rank, rank_tier) : "Unranked" };
+        })
+      );
+    } finally {
+      setRankSaving((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  const saveSplattag = async (playerId: number) => {
+    const key = String(playerId);
+    const tag = splattagEdit[key]?.trim();
+    if (!tag) return;
+    setSplattagSaving((prev) => ({ ...prev, [key]: true }));
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/player/${playerId}/splattag`,
+        { splattag: tag },
+        { withCredentials: true },
+      );
+      setProfiles((prev) => prev.map((p) => p.id === playerId ? { ...p, splattag: tag } : p));
+      setSplattagEdit((prev) => ({ ...prev, [key]: null }));
+    } catch {
+      // leave edit open on failure
+    } finally {
+      setSplattagSaving((prev) => ({ ...prev, [key]: false }));
+    }
   };
 
   return (
@@ -721,73 +868,184 @@ function PlayerProfilesSection() {
         <Users className="w-4 h-4" />
         <span className="font-medium">Player Profiles</span>
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        {loaded && (
+        {profiles.length > 0 && (
           <span className="text-xs text-slate-600 ml-1">({profiles.length})</span>
         )}
       </button>
 
       {open && (
         <div className="mt-3">
+          <form onSubmit={handleSearch} className="flex gap-2 mb-3">
+            <input
+              className="flex-1 bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
+              placeholder="Search by name, splattag, or Twitch…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button type="submit" className="px-3 py-1.5 text-sm rounded bg-slate-700 hover:bg-slate-600 text-white">
+              Search
+            </button>
+            {search && (
+              <button type="button" onClick={() => { setSearch(""); load(); }} className="text-slate-500 hover:text-slate-300 px-1 text-xs">
+                Clear
+              </button>
+            )}
+          </form>
+
           {loading ? (
-            <p className="text-xs text-slate-500 py-2">Loading profiles…</p>
+            <p className="text-xs text-slate-500 py-2">Loading…</p>
           ) : profiles.length === 0 ? (
-            <p className="text-xs text-slate-600 py-2">No ranked players yet.</p>
+            <p className="text-xs text-slate-600 py-2">No profiles found.</p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-700/40">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-700/40 bg-slate-900/40">
                     <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Player</th>
-                    <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Discord ID</th>
                     <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Twitch</th>
-                    <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Rank</th>
-                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Rating</th>
+                    <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Actual Rank</th>
+                    <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Predicted Rank</th>
                     <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">W/L</th>
-                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Win%</th>
                     <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Tourneys</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {profiles.map((p, _i) => (
-                    <tr
-                      key={p.discord_id}
-                      className="border-b border-slate-800/50 hover:bg-slate-800/20 last:border-b-0"
-                    >
+                  {profiles.map((p) => (
+                    <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-800/20 last:border-b-0">
                       <td className="px-3 py-2">
-                        <div className="font-medium text-white">{p.display_name || "—"}</div>
-                        {p.splattag && (
-                          <div className="text-slate-500 mt-0.5">{p.splattag}</div>
+                        <div className="font-medium text-white">{p.display_name || "-"}</div>
+                        {splattagEdit[String(p.id)] != null ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <input
+                              autoFocus
+                              value={splattagEdit[String(p.id)] ?? ""}
+                              onChange={(e) => setSplattagEdit((prev) => ({ ...prev, [String(p.id)]: e.target.value }))}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") saveSplattag(p.id);
+                                if (e.key === "Escape") setSplattagEdit((prev) => ({ ...prev, [String(p.id)]: null }));
+                              }}
+                              placeholder="Name#1234"
+                              className="w-28 bg-slate-900 border border-purple-500/60 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                            />
+                            <button
+                              onClick={() => saveSplattag(p.id)}
+                              disabled={splattagSaving[String(p.id)]}
+                              className="text-green-400 hover:text-green-300 disabled:opacity-50"
+                            >
+                              <Check className="w-3 h-3" />
+                            </button>
+                            <button onClick={() => setSplattagEdit((prev) => ({ ...prev, [String(p.id)]: null }))} className="text-slate-500 hover:text-slate-300">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 mt-0.5 group">
+                            <span className={p.splattag ? "text-slate-500" : "text-red-500/60 text-[10px]"}>
+                              {p.splattag ?? "no tag"}
+                            </span>
+                            <button
+                              onClick={() => setSplattagEdit((prev) => ({ ...prev, [String(p.id)]: p.splattag ?? "" }))}
+                              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-purple-400 transition-opacity"
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
+                        )}
+                        {discordEdit[p.id] != null ? (
+                          <div className="flex items-center gap-1 mt-0.5">
+                            <input
+                              autoFocus
+                              value={discordEdit[p.id] ?? ""}
+                              onChange={(e) => setDiscordEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                              onKeyDown={async (e) => {
+                                if (e.key === "Escape") { setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); return; }
+                                if (e.key !== "Enter") return;
+                                const val = discordEdit[p.id]?.trim();
+                                if (!val || !/^\d{17,20}$/.test(val)) return;
+                                setDiscordSaving((prev) => ({ ...prev, [p.id]: true }));
+                                try {
+                                  const { data } = await axios.post(`${API_URL}/api/admin/player/${p.id}/discord`, { discord_id: val }, { withCredentials: true });
+                                  if (data.ok) { setProfiles((prev) => prev.map((r) => r.id === p.id ? { ...r, discord_id: val } : r)); setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); }
+                                } finally { setDiscordSaving((prev) => ({ ...prev, [p.id]: false })); }
+                              }}
+                              placeholder="Discord ID"
+                              className="w-36 bg-slate-900 border border-purple-500/60 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none font-mono"
+                            />
+                            <button onClick={() => setDiscordEdit((prev) => ({ ...prev, [p.id]: null }))} className="text-slate-500 hover:text-slate-300">
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 mt-0.5 group">
+                            {p.discord_id
+                              ? <span className="font-mono text-slate-600 text-[10px] select-all">{p.discord_id}</span>
+                              : <span className="text-red-500/60 text-[10px]">no discord</span>
+                            }
+                            <button
+                              onClick={() => setDiscordEdit((prev) => ({ ...prev, [p.id]: "" }))}
+                              className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-purple-400 transition-opacity"
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                          </div>
                         )}
                       </td>
-                      <td className="px-3 py-2 font-mono text-slate-400 select-all">{p.discord_id}</td>
                       <td className="px-3 py-2">
                         {p.twitch_username ? (
-                          <span className="text-purple-400 flex items-center gap-1">
-                            <AdminTwitchIcon />
-                            {p.twitch_username}
-                          </span>
-                        ) : (
-                          <span className="text-slate-700">—</span>
-                        )}
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-purple-400 flex items-center gap-1"><AdminTwitchIcon />{p.twitch_username}</span>
+                            <button
+                              disabled={nativeToggling[p.id]}
+                              onClick={async () => {
+                                setNativeToggling((prev) => ({ ...prev, [p.id]: true }));
+                                try {
+                                  const { data } = await axios.post(`${API_URL}/api/admin/player/${p.id}/twitch-native/toggle`, {}, { withCredentials: true });
+                                  if (data.ok) setProfiles((prev) => prev.map((r) => r.id === p.id ? { ...r, twitch_native: data.twitch_native } : r));
+                                } finally {
+                                  setNativeToggling((prev) => ({ ...prev, [p.id]: false }));
+                                }
+                              }}
+                              className="text-left disabled:opacity-50"
+                            >
+                              {p.twitch_native
+                                ? <span className="text-green-500 text-[10px] hover:text-green-300">✓ verified from Twitch</span>
+                                : <span className="text-yellow-500/80 text-[10px] hover:text-yellow-400">⚠ linked via Discord only</span>
+                              }
+                            </button>
+                          </div>
+                        ) : <span className="text-red-500/60 text-[10px]">not linked</span>}
                       </td>
                       <td className="px-3 py-2">
-                        <span className={`font-medium ${p.rank ? (RANK_COLORS[p.rank] ?? "text-slate-400") : "text-slate-600"}`}>
-                          {p.rank_emoji} {p.rank_name}
-                        </span>
+                        <select
+                          value={p.rank && p.rank_tier ? `${p.rank}-${p.rank_tier}` : ""}
+                          disabled={rankSaving[`${p.id}-actual`]}
+                          onChange={(e) => setRank(p.id, e.target.value, "actual")}
+                          className="bg-slate-800 border border-slate-600 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-purple-400 disabled:opacity-50"
+                        >
+                          {RANK_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
                       </td>
-                      <td className="px-3 py-2 text-right font-mono text-slate-200 tabular-nums">{p.rating.toFixed(1)}</td>
+                      <td className="px-3 py-2">
+                        <select
+                          value={p.predicted_rank && p.predicted_rank_tier ? `${p.predicted_rank}-${p.predicted_rank_tier}` : ""}
+                          disabled={rankSaving[`${p.id}-predicted`]}
+                          onChange={(e) => setRank(p.id, e.target.value, "predicted")}
+                          className="bg-slate-800 border border-slate-500/50 rounded px-1.5 py-0.5 text-xs text-slate-300 italic focus:outline-none focus:border-yellow-400 disabled:opacity-50"
+                        >
+                          {RANK_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">
                         <span className="text-green-400">{p.matches_won}</span>
                         <span className="text-slate-600 mx-0.5">/</span>
                         <span className="text-red-400/80">{p.matches_lost}</span>
                       </td>
-                      <td className="px-3 py-2 text-right text-slate-300 tabular-nums">{p.win_rate}%</td>
                       <td className="px-3 py-2 text-right">
-                        {p.tournament_wins > 0 ? (
-                          <span className="text-yellow-400">{p.tournament_wins} 🏆</span>
-                        ) : (
-                          <span className="text-slate-700">{p.tournaments_played}</span>
-                        )}
+                        {p.tournament_wins > 0 ? <span className="text-yellow-400">{p.tournament_wins} 🏆</span> : <span className="text-slate-600">{p.tournaments_played}</span>}
                       </td>
                     </tr>
                   ))}

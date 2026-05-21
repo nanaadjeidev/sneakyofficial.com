@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 
-const apiUrl = import.meta.env.VITE_API_URL || "https://www.sneakyofficial.com";
+const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
 function useLogout() {
   const navigate = useNavigate();

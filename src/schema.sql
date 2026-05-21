@@ -87,6 +87,8 @@ guild_id BIGINT NOT NULL,
 name VARCHAR(100) NOT NULL,
 status ENUM('signup','active','complete','cancelled') DEFAULT 'signup',
 team_size TINYINT NOT NULL DEFAULT 4,
+special_rules TEXT DEFAULT NULL,
+affects_rating BOOLEAN NOT NULL DEFAULT TRUE,
 channel_id BIGINT,
 created_by BIGINT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -94,6 +96,10 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 INDEX idx_guild_status (guild_id, status)
 );
 -- Migration for existing installs: ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS team_size TINYINT NOT NULL DEFAULT 4;
+-- Migration for existing installs: ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS special_rules TEXT DEFAULT NULL;
+-- Migration for existing installs: ALTER TABLE tournaments ADD COLUMN IF NOT EXISTS affects_rating BOOLEAN NOT NULL DEFAULT TRUE;
+-- Migration for existing installs: ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS rank_tier TINYINT DEFAULT NULL;
+-- Migration for existing installs: ALTER TABLE player_profiles ADD COLUMN IF NOT EXISTS special_tournament_wins INT DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS tournament_signups (
 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -150,10 +156,16 @@ discord_id BIGINT UNIQUE,
 twitch_username VARCHAR(50),
 display_name VARCHAR(100) NOT NULL,
 splattag VARCHAR(30) UNIQUE,
-rank TINYINT DEFAULT NULL,
+`rank` TINYINT DEFAULT NULL,
+rank_tier TINYINT DEFAULT NULL,
+predicted_rank TINYINT DEFAULT NULL,
+predicted_rank_tier TINYINT DEFAULT NULL,
+last_rank_check DATETIME DEFAULT NULL,
+twitch_native BOOLEAN NOT NULL DEFAULT FALSE,
 trueskill_mu FLOAT DEFAULT 25.0,
 trueskill_sigma FLOAT DEFAULT 8.333,
 tournament_wins INT DEFAULT 0,
+special_tournament_wins INT DEFAULT 0,
 matches_won INT DEFAULT 0,
 matches_lost INT DEFAULT 0,
 tournaments_played INT DEFAULT 0,
@@ -162,9 +174,14 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 INDEX idx_discord (discord_id),
 INDEX idx_twitch (twitch_username),
-INDEX idx_rank (rank DESC),
+INDEX idx_rank (`rank` DESC),
 INDEX idx_mu (trueskill_mu DESC)
 );
+-- Migration for existing installs:
+-- ALTER TABLE player_profiles ADD COLUMN predicted_rank TINYINT DEFAULT NULL;
+-- ALTER TABLE player_profiles ADD COLUMN predicted_rank_tier TINYINT DEFAULT NULL;
+-- ALTER TABLE player_profiles ADD COLUMN last_rank_check DATETIME DEFAULT NULL;
+-- ALTER TABLE player_profiles ADD COLUMN twitch_native BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS tournament_win_reports (
 id INT AUTO_INCREMENT PRIMARY KEY,

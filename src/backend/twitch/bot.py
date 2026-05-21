@@ -43,6 +43,7 @@ class TwitchBot(commands.Bot):
         )
         self._pending_match_id: Optional[int] = None
         self._pending_winner_team_id: Optional[int] = None
+        self._pending_splattags: dict[str, str] = {}
 
     async def event_ready(self) -> None:
         logger.info("Twitch bot ready: %s", self.nick)
@@ -71,7 +72,7 @@ class TwitchBot(commands.Bot):
     #  Tournament commands                                                 #
     # ------------------------------------------------------------------ #
 
-    @commands.command(name="signup")
+    @commands.command(name="signup", aliases=["in", "getmein", "join", "enter"])
     async def cmd_signup(self, ctx: commands.Context) -> None:
         guild_id = await self._get_guild_id()
         if not guild_id:
@@ -86,7 +87,43 @@ class TwitchBot(commands.Bot):
         suffix = f" | {global_config.website_url}/tournament" if ok else ""
         await ctx.send(f"@{ctx.author.name} {msg}{suffix}")
 
-    @commands.command(name="unsignup", aliases=["leavetournament"])
+    @commands.command(name="splattag")
+    async def cmd_splattag(self, ctx: commands.Context) -> None:
+        """!splattag Name#1234 — stage your Splatoon tag for confirmation."""
+        import re
+        parts = ctx.message.content.strip().split(maxsplit=1)
+        if len(parts) < 2 or not parts[1].strip():
+            await ctx.send(f"@{ctx.author.name} Usage: !splattag YourName#1234")
+            return
+        tag = parts[1].strip()
+        if not re.match(r"^.{1,20}#\d{4}$", tag):
+            await ctx.send(f"@{ctx.author.name} Invalid format. Use !splattag YourName#1234 (up to 20 chars, then # and 4 digits).")
+            return
+        self._pending_splattags[ctx.author.name.lower()] = tag
+        await ctx.send(f"@{ctx.author.name} Set your splattag to `{tag}`? Type !confirmtag to confirm or !canceltag to cancel. Once set it can only be changed by an admin.")
+
+    @commands.command(name="confirmtag")
+    async def cmd_confirmtag(self, ctx: commands.Context) -> None:
+        """!confirmtag — confirm the staged splattag."""
+        from backend.profile import ProfileManager
+        username = ctx.author.name.lower()
+        tag = self._pending_splattags.pop(username, None)
+        if not tag:
+            await ctx.send(f"@{ctx.author.name} No pending splattag. Use !splattag YourName#1234 first.")
+            return
+        ok, msg = await ProfileManager.set_splattag_by_twitch(username, tag)
+        await ctx.send(f"@{ctx.author.name} {msg}")
+
+    @commands.command(name="canceltag")
+    async def cmd_canceltag(self, ctx: commands.Context) -> None:
+        """!canceltag — cancel the staged splattag."""
+        username = ctx.author.name.lower()
+        if self._pending_splattags.pop(username, None):
+            await ctx.send(f"@{ctx.author.name} Splattag cancelled.")
+        else:
+            await ctx.send(f"@{ctx.author.name} No pending splattag to cancel.")
+
+    @commands.command(name="unsignup", aliases=["leavetournament", "out", "getmeout", "leave", "exit"])
     async def cmd_unsignup(self, ctx: commands.Context) -> None:
         guild_id = await self._get_guild_id()
         if not guild_id:
@@ -116,6 +153,43 @@ class TwitchBot(commands.Bot):
         label = status_map.get(t["status"], t["status"])
         size = t.get("team_size", 4)
         await ctx.send(f"🦑 {t['name']} ({size}v{size}) — {label} | {global_config.website_url}/tournament")
+
+    @commands.command(name="report")
+    async def cmd_report(self, ctx: commands.Context) -> None:
+        """!report win / !report loss — report your match result."""
+        parts = ctx.message.content.strip().split()
+        if len(parts) < 2 or parts[1].lower() not in ("win", "loss", "w", "l"):
+            await ctx.send(f"@{ctx.author.name} Usage: !report win  or  !report loss")
+            return
+        result = "win" if parts[1].lower() in ("win", "w") else "loss"
+
+        guild_id = await self._get_guild_id()
+        if not guild_id:
+            await ctx.send(f"@{ctx.author.name} No active tournament.")
+            return
+        tournament = await TournamentManager.get_active_tournament(guild_id)
+        if not tournament or tournament["status"] != "active":
+            await ctx.send(f"@{ctx.author.name} No active tournament right now.")
+            return
+
+        match = await TournamentManager.get_player_match(tournament["id"], twitch_username=ctx.author.name.lower())
+        if not match:
+            await ctx.send(f"@{ctx.author.name} You don't have an active match right now.")
+            return
+
+        player_team_id = match["player_team_id"]
+        winner_team_id = player_team_id if result == "win" else (
+            match["team2_id"] if player_team_id == match["team1_id"] else match["team1_id"]
+        )
+
+        ok, msg = await TournamentManager.report_win(
+            match_id=match["id"],
+            winner_team_id=winner_team_id,
+            reporter_twitch=ctx.author.name.lower(),
+        )
+        if ok:
+            self.set_pending_confirmation(match["id"], winner_team_id)
+        await ctx.send(f"@{ctx.author.name} {msg} Opposing team: use !confirm or !dispute in chat.")
 
     @commands.command(name="confirm")
     async def cmd_confirm(self, ctx: commands.Context) -> None:
@@ -215,10 +289,14 @@ class TwitchBot(commands.Bot):
     @commands.command(name="commands", aliases=["cmds", "help"])
     async def cmd_commands(self, ctx: commands.Context) -> None:
         await ctx.send(
-            "🦑 Commands: "
-            "!signup !unsignup !bracket !tournament !confirm !dispute — tournament | "
-            "!rank [user] !stats [user] !leaderboard — rankings | "
-            "!discord !website !socials !gg !booyah — fun stuff"
+            "🦑 Tournament: !signup / !in — sign up | !unsignup / !out — leave | "
+            "!splattag Name#1234 then !confirmtag — set your Splatoon tag (required, once only) | "
+            "!bracket — bracket | !tournament — status | !confirm / !dispute — match result"
+        )
+        await ctx.send(
+            "📊 Rankings: !rank [user] / !stats [user] — your stats | !leaderboard / !splatstats — full leaderboard | "
+            "🌙 Social: !discord !website / !site !socials !gg !booyah | "
+            "ℹ️ !commands / !cmds / !help — this list"
         )
 
     # ------------------------------------------------------------------ #

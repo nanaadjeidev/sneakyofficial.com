@@ -118,6 +118,18 @@ class WebServer:
         self.app.router.add_post(
             "/api/splatdle/stats", self.sneaky_api.post_stats)
         self.app.router.add_get(
+            "/api/tournament/ws", self.sneaky_api.handle_tournament_ws)
+        self.app.router.add_get(
+            "/api/tournament/signups", self.sneaky_api.serve_tournament_signups)
+        self.app.router.add_get(
+            "/api/tournament/my-match", self.sneaky_api.serve_my_match)
+        self.app.router.add_post(
+            "/api/tournament/report", self.sneaky_api.tournament_web_report)
+        self.app.router.add_post(
+            "/api/tournament/confirm", self.sneaky_api.tournament_web_confirm)
+        self.app.router.add_post(
+            "/api/tournament/dispute", self.sneaky_api.tournament_web_dispute)
+        self.app.router.add_get(
             "/api/tournament", self.sneaky_api.serve_tournament_current)
         self.app.router.add_get(
             "/api/tournament/admin", self.sneaky_api.tournament_admin_get)
@@ -137,6 +149,16 @@ class WebServer:
             "/api/player/{discord_id}", self.sneaky_api.serve_player_profile)
         self.app.router.add_get(
             "/api/leaderboard", self.sneaky_api.serve_leaderboard)
+        self.app.router.add_get(
+            "/api/admin/players", self.sneaky_api.serve_all_players)
+        self.app.router.add_post(
+            "/api/admin/player/{player_id}/rank", self.sneaky_api.admin_set_player_rank)
+        self.app.router.add_post(
+            "/api/admin/player/{player_id}/splattag", self.sneaky_api.admin_override_splattag)
+        self.app.router.add_post(
+            "/api/admin/player/{player_id}/discord", self.sneaky_api.admin_set_discord)
+        self.app.router.add_post(
+            "/api/admin/player/{player_id}/twitch-native/toggle", self.sneaky_api.admin_toggle_twitch_native)
 
         logger.debug("Static directory: %s", self.static_dir)
         assets_dir = os.path.join(self.static_dir, "assets")

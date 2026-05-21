@@ -75,7 +75,7 @@ class TournamentManager:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    async def create(guild_id: int, name: str, channel_id: int, created_by: int, team_size: int = 4) -> tuple[bool, str, Optional[int]]:
+    async def create(guild_id: int, name: str, channel_id: int, created_by: int, team_size: int = 4, special_rules: Optional[str] = None, affects_rating: bool = True) -> tuple[bool, str, Optional[int]]:
         """Open a new tournament for signups. Returns (ok, message, tournament_id)."""
         team_size = max(2, min(4, team_size))
         async with DBContextManager() as cur:
@@ -87,8 +87,8 @@ class TournamentManager:
                 return False, "A tournament is already running. Cancel it first.", None
 
             await cur.execute(
-                "INSERT INTO tournaments (guild_id, name, status, team_size, channel_id, created_by) VALUES (%s, %s, 'signup', %s, %s, %s)",
-                (guild_id, name, team_size, channel_id, created_by)
+                "INSERT INTO tournaments (guild_id, name, status, team_size, special_rules, affects_rating, channel_id, created_by) VALUES (%s, %s, 'signup', %s, %s, %s, %s, %s)",
+                (guild_id, name, team_size, special_rules or None, affects_rating, channel_id, created_by)
             )
             tid = cur.lastrowid
         return True, f"Tournament **{name}** created! ({team_size}v{team_size}) Sign-ups are open.", tid
@@ -105,6 +105,13 @@ class TournamentManager:
                 return False, "No active tournament to cancel."
             tid, name = row
             await cur.execute("UPDATE tournaments SET status = 'cancelled' WHERE id = %s", (tid,))
+            # Clear all associated data so the next tournament starts clean
+            await cur.execute("DELETE FROM tournament_round_schedule WHERE tournament_id = %s", (tid,))
+            await cur.execute("DELETE FROM tournament_matches WHERE tournament_id = %s", (tid,))
+            await cur.execute("DELETE FROM tournament_teams WHERE tournament_id = %s", (tid,))
+            await cur.execute("DELETE FROM tournament_signups WHERE tournament_id = %s", (tid,))
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({"event": "tournament_cancelled", "tournament_id": tid})
         return True, f"Tournament **{name}** has been cancelled."
 
     # ------------------------------------------------------------------ #
@@ -122,6 +129,31 @@ class TournamentManager:
             if not row:
                 return False, "No tournament is currently open for sign-ups."
             tid, name = row
+
+            # Profile completeness check
+            if discord_id:
+                await cur.execute(
+                    "SELECT splattag, twitch_username FROM player_profiles WHERE discord_id = %s", (discord_id,)
+                )
+                profile = await cur.fetchone()
+                if not profile or not profile[0]:
+                    return False, "You need to set your Splatoon tag first! Use `/profile splattag Name#1234` on Discord."
+                if not profile[1]:
+                    return False, "You need to link your Twitch account first! Use `/profile twitch <username>` on Discord."
+            elif twitch_username:
+                await cur.execute(
+                    "SELECT splattag, discord_id FROM player_profiles WHERE LOWER(twitch_username) = LOWER(%s)",
+                    (twitch_username,),
+                )
+                profile = await cur.fetchone()
+                if not profile or not profile[0]:
+                    return False, "You need a Splatoon tag to sign up. Use !splattag YourName#1234 in chat first."
+                if not profile[1]:
+                    return False, "You need to link your Discord account to sign up. Join our Discord and use /profile twitch to link up."
+                await cur.execute(
+                    "UPDATE player_profiles SET twitch_native = TRUE WHERE LOWER(twitch_username) = LOWER(%s)",
+                    (twitch_username,)
+                )
 
             # Duplicate check
             if discord_id:
@@ -144,6 +176,15 @@ class TournamentManager:
 
             await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
             count = (await cur.fetchone())[0]
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "signup",
+            "tournament_id": tid,
+            "display_name": display_name,
+            "discord_id": str(discord_id) if discord_id else None,
+            "twitch_username": twitch_username,
+            "count": count,
+        })
         return True, f"✅ **{display_name}** signed up for **{name}**! ({count} players so far)"
 
     @staticmethod
@@ -160,6 +201,18 @@ class TournamentManager:
 
             if discord_id:
                 await cur.execute(
+                    "SELECT display_name FROM tournament_signups WHERE tournament_id = %s AND discord_id = %s",
+                    (tid, discord_id)
+                )
+            else:
+                await cur.execute(
+                    "SELECT display_name FROM tournament_signups WHERE tournament_id = %s AND twitch_username = %s",
+                    (tid, twitch_username)
+                )
+            name_row = await cur.fetchone()
+
+            if discord_id:
+                await cur.execute(
                     "DELETE FROM tournament_signups WHERE tournament_id = %s AND discord_id = %s",
                     (tid, discord_id)
                 )
@@ -170,6 +223,19 @@ class TournamentManager:
                 )
             if not cur.rowcount:
                 return False, "You're not signed up for this tournament."
+
+            await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
+            count = (await cur.fetchone())[0]
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "leave",
+            "tournament_id": tid,
+            "display_name": name_row[0] if name_row else None,
+            "discord_id": str(discord_id) if discord_id else None,
+            "twitch_username": twitch_username,
+            "count": count,
+        })
         return True, f"You've left **{name}**."
 
     # ------------------------------------------------------------------ #
@@ -270,7 +336,12 @@ class TournamentManager:
             if num_teams < 2:
                 min_players = team_size * 2
                 needed = min_players - (len(pre_teams_raw) * team_size + len(unassigned))
-                detail = f"Found {len(pre_teams_raw)} saved team(s) and {len(unassigned)} unassigned player(s)."
+                await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
+                total_signups = (await cur.fetchone())[0]
+                detail = (
+                    f"Found {len(pre_teams_raw)} saved team(s) and {len(unassigned)} unassigned player(s) "
+                    f"({total_signups} total signups in this tournament)."
+                )
                 return False, f"Need at least {min_players} players (2 full teams of {team_size}). Need {max(0, needed)} more. {detail}", []
 
             # Generate R1 slot pairs
@@ -317,6 +388,8 @@ class TournamentManager:
             f" ({dropped_count} player(s) dropped — not enough for a full team)"
             if dropped_count else ""
         )
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({"event": "tournament_locked", "tournament_id": tid})
         return True, f"**{tournament_name}** locked! {num_teams} teams formed.{drop_msg}", teams_info
 
     # ------------------------------------------------------------------ #
@@ -360,6 +433,48 @@ class TournamentManager:
             return match
 
     @staticmethod
+    async def get_player_active_match(tournament_id: int, discord_id: Optional[int] = None, twitch_username: Optional[str] = None) -> Optional[dict]:
+        """Find the current pending or awaiting-confirmation match for a player, with reported_winner_id."""
+        async with DBContextManager(use_dict=True) as cur:
+            if discord_id:
+                await cur.execute(
+                    """SELECT ttm.team_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON ttm.signup_id = s.id
+                       WHERE s.tournament_id = %s AND s.discord_id = %s""",
+                    (tournament_id, discord_id)
+                )
+            else:
+                await cur.execute(
+                    """SELECT ttm.team_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON ttm.signup_id = s.id
+                       WHERE s.tournament_id = %s AND s.twitch_username = %s""",
+                    (tournament_id, twitch_username)
+                )
+            team_row = await cur.fetchone()
+            if not team_row:
+                return None
+            team_id = team_row["team_id"]
+
+            await cur.execute(
+                """SELECT m.id, m.round, m.match_number, m.team1_id, m.team2_id, m.status,
+                          t1.team_name AS team1_name, t2.team_name AS team2_name,
+                          wr.reported_winner_id
+                   FROM tournament_matches m
+                   LEFT JOIN tournament_teams t1 ON t1.id = m.team1_id
+                   LEFT JOIN tournament_teams t2 ON t2.id = m.team2_id
+                   LEFT JOIN tournament_win_reports wr ON wr.match_id = m.id AND wr.status = 'pending'
+                   WHERE m.tournament_id = %s AND m.status IN ('pending', 'awaiting_confirmation')
+                     AND (m.team1_id = %s OR m.team2_id = %s)
+                   ORDER BY m.round ASC LIMIT 1""",
+                (tournament_id, team_id, team_id)
+            )
+            match = await cur.fetchone()
+            if match:
+                match["player_team_id"] = team_id
+                match["opposing_team_id"] = match["team2_id"] if team_id == match["team1_id"] else match["team1_id"]
+            return match
+
+    @staticmethod
     async def report_win(
         match_id: int,
         winner_team_id: int,
@@ -368,12 +483,13 @@ class TournamentManager:
     ) -> tuple[bool, str]:
         """Create a pending win report. Returns (ok, message)."""
         async with DBContextManager() as cur:
-            await cur.execute("SELECT status FROM tournament_matches WHERE id = %s", (match_id,))
+            await cur.execute("SELECT status, tournament_id FROM tournament_matches WHERE id = %s", (match_id,))
             row = await cur.fetchone()
             if not row:
                 return False, "Match not found."
             if row[0] != "pending":
                 return False, "This match has already been decided."
+            tournament_id = row[1]
 
             await cur.execute(
                 "SELECT id FROM tournament_win_reports WHERE match_id = %s AND status = 'pending'",
@@ -392,6 +508,13 @@ class TournamentManager:
                 "UPDATE tournament_matches SET status = 'awaiting_confirmation' WHERE id = %s",
                 (match_id,)
             )
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "match_reported",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "winner_team_id": winner_team_id,
+        })
         return True, "Result reported! Waiting for the opposing team to confirm."
 
     @staticmethod
@@ -471,6 +594,14 @@ class TournamentManager:
         except Exception as e:
             logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
 
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "match_complete",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "winner_team_id": winner_team_id,
+            "winner_name": winner_name,
+        })
         return True, f"✅ Result confirmed! **{winner_name}** wins!", winner_team_id
 
     @staticmethod
@@ -503,7 +634,8 @@ class TournamentManager:
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
                 """SELECT s.id, s.display_name, s.discord_id, s.twitch_username, s.assigned_team_id,
-                          COALESCE(pp.trueskill_mu, 25.0) AS rating
+                          COALESCE(pp.trueskill_mu, 25.0) AS rating,
+                          pp.`rank`, pp.rank_tier, pp.splattag
                    FROM tournament_signups s
                    LEFT JOIN player_profiles pp ON (
                        (s.discord_id IS NOT NULL AND pp.discord_id = s.discord_id)
@@ -525,6 +657,20 @@ class TournamentManager:
         return {"signups": signups, "pre_teams": pre_teams}
 
     @staticmethod
+    async def get_public_signups(tournament_id: int) -> list[dict]:
+        """Return display_name, discord_id, twitch_username for all signups (public view)."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT display_name, discord_id, twitch_username FROM tournament_signups WHERE tournament_id = %s ORDER BY signed_up_at",
+                (tournament_id,)
+            )
+            rows = list(await cur.fetchall())
+        for r in rows:
+            if r.get("discord_id") is not None:
+                r["discord_id"] = str(r["discord_id"])
+        return rows
+
+    @staticmethod
     async def save_pre_teams(tournament_id: int, teams_data: list[dict]) -> tuple[bool, str]:
         """Save manual team assignments from the web UI.
 
@@ -537,6 +683,21 @@ class TournamentManager:
             row = await cur.fetchone()
             if not row or row[0] != "signup":
                 return False, "Tournament is not in sign-up phase."
+
+            # Validate every signup ID belongs to this tournament before touching anything
+            all_ids = list({int(sid) for team in teams_data for sid in team.get("signup_ids", []) if sid})
+            if all_ids:
+                fmt = ",".join(["%s"] * len(all_ids))
+                await cur.execute(
+                    f"SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s AND id IN ({fmt})",
+                    [tournament_id] + all_ids,
+                )
+                valid_count = (await cur.fetchone())[0]
+                if valid_count < len(all_ids):
+                    return False, (
+                        f"Player list is out of sync ({valid_count}/{len(all_ids)} IDs match this tournament). "
+                        "Please refresh the page and try again."
+                    )
 
             # Clear existing pre-created teams and their assignments
             await cur.execute(
@@ -555,6 +716,7 @@ class TournamentManager:
                 (tournament_id,)
             )
 
+            saved = 0
             for i, team in enumerate(teams_data):
                 signup_ids = team.get("signup_ids", [])
                 if not signup_ids:
@@ -580,10 +742,11 @@ class TournamentManager:
                     (tournament_id, team_name, i + 1, captain_id, bool(team.get("name")))
                 )
                 team_id = cur.lastrowid
+                saved += 1
 
                 for sid in signup_ids:
                     await cur.execute(
-                        "INSERT IGNORE INTO tournament_team_members (team_id, signup_id) VALUES (%s, %s)",
+                        "INSERT INTO tournament_team_members (team_id, signup_id) VALUES (%s, %s)",
                         (team_id, sid)
                     )
                     await cur.execute(
@@ -591,7 +754,7 @@ class TournamentManager:
                         (team_id, sid)
                     )
 
-        return True, f"{len(teams_data)} team(s) saved."
+        return True, f"{saved} team(s) saved."
 
     @staticmethod
     async def set_team_name(team_id: int, new_name: str, requestor_discord_id: int) -> tuple[bool, str]:
@@ -652,6 +815,14 @@ class TournamentManager:
 
             await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (winner_team_id,))
             name_row = await cur.fetchone()
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "match_complete",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "winner_team_id": winner_team_id,
+            "winner_name": name_row[0] if name_row else None,
+        })
         return True, f"Match completed. **{name_row[0] if name_row else 'Winner'}** advances!"
 
     # ------------------------------------------------------------------ #
@@ -663,7 +834,7 @@ class TournamentManager:
         """Return the active/signup tournament for a guild, or None."""
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
-                "SELECT id, name, status, team_size FROM tournaments WHERE guild_id = %s AND status IN ('signup','active') ORDER BY created_at DESC LIMIT 1",
+                "SELECT id, name, status, team_size, special_rules, affects_rating FROM tournaments WHERE guild_id = %s AND status IN ('signup','active') ORDER BY created_at DESC LIMIT 1",
                 (guild_id,)
             )
             return await cur.fetchone()
@@ -673,7 +844,7 @@ class TournamentManager:
         """Return full bracket data for the API / frontend."""
         async with DBContextManager(use_dict=True) as cur:
             await cur.execute(
-                "SELECT id, name, status, team_size, created_at FROM tournaments WHERE id = %s",
+                "SELECT id, name, status, team_size, special_rules, affects_rating, created_at FROM tournaments WHERE id = %s",
                 (tournament_id,)
             )
             t = await cur.fetchone()
@@ -740,6 +911,8 @@ class TournamentManager:
                     "name": t["name"],
                     "status": t["status"],
                     "team_size": t["team_size"],
+                    "special_rules": t["special_rules"],
+                    "affects_rating": bool(t["affects_rating"]),
                     "created_at": t["created_at"].isoformat() if t["created_at"] else None,
                 },
                 "rounds": [

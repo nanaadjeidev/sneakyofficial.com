@@ -1,9 +1,9 @@
 import time
 import logging
-from urllib.parse import urlunparse
+import secrets
+from urllib.parse import urlunparse, urlencode
 from aiohttp import web, ClientSession
 from typing import Optional
-from authlib.integrations.requests_client import OAuth2Session
 from backend.util.database_context_manager import DBContextManager
 from backend.util.config import global_config
 logger = logging.getLogger("webserver")
@@ -24,7 +24,6 @@ class OauthBase:
         _client_id: OAuth client ID.
         _client_secret: OAuth client secret.
         session: aiohttp ClientSession for API requests.
-        oauth2_client: OAuth2 client for token operations.
     """
     def __init__(
         self, platform: str, base_url: str, token_url: str, auth_url: str, scopes: str, client_dict: dict,
@@ -49,14 +48,14 @@ class OauthBase:
         self.session = None
         logger.debug("Setting up Oauth for %s, Redirect URL: %s",
                      self._platform_name, self._redirect_uri)
-        self.oauth2_client = OAuth2Session(
-            client_id=self._client_id,
-            client_secret=self._client_secret,
-            redirect_uri=self._redirect_uri,
-            scope=self._scopes
-        )
-        self._auth_url, _ = self.oauth2_client.create_authorization_url(
-            auth_url)
+        params = {
+            'client_id': self._client_id,
+            'redirect_uri': self._redirect_uri,
+            'response_type': 'code',
+            'scope': self._scopes,
+            'state': secrets.token_urlsafe(32),
+        }
+        self._auth_url = f"{auth_url}?{urlencode(params)}"
 
     async def init(self) -> None:
         """Initialize the HTTP client session.
@@ -163,12 +162,19 @@ class OauthBase:
             Tuple of (access_token, refresh_token, expires_at) or None if failed.
         """
         try:
-            new_token = self.oauth2_client.refresh_token(
+            async with self.session.post(
                 self._token_url,
-                refresh_token=refresh_token,
-                client_id=self._client_id,
-                client_secret=self._client_secret
-            )
+                data={
+                    'client_id': self._client_id,
+                    'client_secret': self._client_secret,
+                    'refresh_token': refresh_token,
+                    'grant_type': 'refresh_token',
+                }
+            ) as resp:
+                if resp.status != 200:
+                    logger.error("Failed to refresh token: HTTP %s", resp.status)
+                    return None
+                new_token = await resp.json()
             return (
                 new_token.get("access_token"),
                 new_token.get("refresh_token"),
@@ -277,6 +283,7 @@ class OauthBase:
 
         response = web.json_response({"success": True})
 
+        cookie_domain = ".sneakyofficial.com" if global_config.secured else None
         response.set_cookie(
             f"{self._platform_name}_access_token",
             new_access_token,
@@ -284,7 +291,7 @@ class OauthBase:
             secure=global_config.secured,
             samesite="Lax",
             max_age=3600,
-            domain=".sneakyofficial.com",
+            domain=cookie_domain,
         )
         response.set_cookie(
             f"{self._platform_name}_refresh_token",
@@ -293,7 +300,7 @@ class OauthBase:
             secure=global_config.secured,
             samesite="Lax",
             max_age=86400 * 7,
-            domain=".sneakyofficial.com",
+            domain=cookie_domain,
         )
         if user_id:
             response.set_cookie(
@@ -303,7 +310,7 @@ class OauthBase:
                 secure=global_config.secured,
                 samesite="Lax",
                 max_age=86400 * 30,
-                domain=".sneakyofficial.com",
+                domain=cookie_domain,
             )
 
         return response

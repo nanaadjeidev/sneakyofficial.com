@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-const apiUrl = import.meta.env.VITE_API_URL || "https://www.sneakyofficial.com";
+const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
 function useToken() {
   const [token, setToken] = useState<string | null>(null);

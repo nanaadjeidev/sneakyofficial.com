@@ -9,6 +9,7 @@ import AuthCallback from "./pages/Authorised";
 import DevPortfolio from "./pages/DevPortfolio";
 import Tournament from "./pages/Tournament";
 import Leaderboard from "./pages/Leaderboard";
+import Players from "./pages/Players";
 
 function App() {
   return (
@@ -24,6 +25,7 @@ function App() {
       <Route path="/portfolio" element={<DevPortfolio />} />
       <Route path="/tournament" element={<Tournament />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
+      <Route path="/players" element={<Players />} />
     </Routes>
   );
 }

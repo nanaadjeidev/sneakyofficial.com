@@ -19,6 +19,7 @@ interface Player {
   matches_lost: number;
   win_rate: number;
   tournament_wins: number;
+  special_tournament_wins: number;
   tournaments_played: number;
 }
 
@@ -41,12 +42,15 @@ function RankBadge({ rank, rankName, rankEmoji }: { rank: number | null; rankNam
   );
 }
 
-type SortKey = "rating" | "wins" | "rank";
+type SortKey = "rating" | "wins" | "rank" | "tourney_wins" | "special_wins" | "total_wins";
 
 const SORT_LABELS: Record<SortKey, string> = {
-  rating: "Rating",
-  wins: "Wins",
-  rank: "Rank",
+  rating:       "Rating",
+  wins:         "Match Wins",
+  rank:         "Rank",
+  tourney_wins: "Tournament Wins",
+  special_wins: "Special Wins",
+  total_wins:   "Total Wins",
 };
 
 function PositionCell({ index }: { index: number }) {
@@ -137,11 +141,22 @@ export default function Leaderboard() {
                   <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden md:table-cell">W</th>
                   <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden md:table-cell">L</th>
                   <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden sm:table-cell">Win%</th>
-                  <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden lg:table-cell">Trophies</th>
+                  <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden lg:table-cell">
+                    {sort === "special_wins" ? "Special 🌟" : sort === "total_wins" ? "Total 🏆" : "Trophies"}
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {players.map((p, i) => (
+                {players.map((p, i) => {
+                  const totalWins = p.tournament_wins + (p.special_tournament_wins ?? 0);
+                  const trophyDisplay =
+                    sort === "special_wins"
+                      ? p.special_tournament_wins > 0 ? <span className="text-amber-300 font-medium">{p.special_tournament_wins} 🌟</span> : <span className="text-slate-700">—</span>
+                      : sort === "total_wins"
+                      ? totalWins > 0 ? <span className="text-yellow-400 font-medium">{totalWins} 🏆</span> : <span className="text-slate-700">—</span>
+                      : p.tournament_wins > 0 ? <span className="text-yellow-400 font-medium">{p.tournament_wins} 🏆</span> : <span className="text-slate-700">—</span>;
+
+                  return (
                   <tr
                     key={p.discord_id}
                     className={`border-b border-slate-800/50 hover:bg-slate-800/20 transition-colors last:border-b-0 ${
@@ -174,14 +189,11 @@ export default function Leaderboard() {
                     <td className="px-4 py-3 text-right text-red-400/80 font-medium hidden md:table-cell">{p.matches_lost}</td>
                     <td className="px-4 py-3 text-right text-slate-300 tabular-nums hidden sm:table-cell">{p.win_rate}%</td>
                     <td className="px-4 py-3 text-right hidden lg:table-cell">
-                      {p.tournament_wins > 0 ? (
-                        <span className="text-yellow-400 font-medium">{p.tournament_wins} 🏆</span>
-                      ) : (
-                        <span className="text-slate-700">—</span>
-                      )}
+                      {trophyDisplay}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

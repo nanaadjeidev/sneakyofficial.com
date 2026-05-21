@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet";
 import { CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
-const apiUrl = import.meta.env.VITE_API_URL || "https://www.sneakyofficial.com";
+const apiUrl = import.meta.env.VITE_API_URL ?? "";
 
 export default function AuthCallback() {
   const [fadeIn, setFadeIn] = useState(false);
