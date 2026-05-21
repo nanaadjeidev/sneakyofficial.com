@@ -10,7 +10,7 @@ from typing import Optional
 
 import interactions
 from interactions import slash_command, slash_option, slash_default_member_permission, OptionType, Permissions
-from interactions.api.events import CommandError, CommandCompletion, Startup
+from interactions.api.events import CommandError, CommandCompletion, Startup, MemberAdd
 from backend.util import global_config
 from version import __version__
 
@@ -277,6 +277,22 @@ class DevTools(interactions.Extension):
             result_message += f"\n⚠️ Failed to delete **{failed_count}** channel(s)"
 
         await ctx.send(result_message)
+
+    _WELCOME_GUILD   = 1019293451579293747
+    _WELCOME_CHANNEL = 1044027827634319360
+
+    @interactions.listen(MemberAdd)
+    async def on_member_join(self, event: MemberAdd) -> None:
+        if int(event.guild_id) != self._WELCOME_GUILD:
+            return
+        channel = self.bot.get_channel(self._WELCOME_CHANNEL)
+        if channel is None:
+            return
+        member = event.member
+        await channel.send(
+            f"Welcome to the server, {member.mention}! 🦑\n"
+            f"Head over to the channels and introduce yourself. Hope you enjoy your stay!"
+        )
 
     @interactions.listen(Startup)
     async def assign_channel(self) -> None:
