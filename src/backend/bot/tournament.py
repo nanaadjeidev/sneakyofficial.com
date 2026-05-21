@@ -324,7 +324,7 @@ class TournamentExt(interactions.Extension):
     @slash_default_member_permission(Permissions.MANAGE_GUILD)
     @slash_option(
         name="count",
-        description="Number of fake players to add (must be a multiple of the tournament's team size)",
+        description="Number of fake players to add (default: 2 full teams)",
         required=False,
         opt_type=OptionType.INTEGER,
     )
@@ -352,10 +352,9 @@ class TournamentExt(interactions.Extension):
             if count == 0:
                 count = team_size * 2  # default: 2 full teams
 
-            max_count = team_size * 8
-            if count % team_size != 0 or count < team_size or count > max_count:
+            if count < 1:
                 await ctx.send(
-                    embed=_embed("❌ Invalid count", f"Count must be a multiple of {team_size} between {team_size} and {max_count}.", 0xe74c3c),
+                    embed=_embed("❌ Invalid count", "Count must be at least 1.", 0xe74c3c),
                     ephemeral=True,
                 )
                 return
@@ -363,11 +362,9 @@ class TournamentExt(interactions.Extension):
             await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
             existing = (await cur.fetchone())[0]
 
-            names_used = list(_BOT_ADJECTIVES[:count])
-            random.shuffle(names_used)
             added_names: list[str] = []
-            for adj in names_used[:count]:
-                display = f"TestBot {adj}"
+            for i in range(count):
+                display = f"TestBot {existing + i + 1}"
                 await cur.execute(
                     "INSERT INTO tournament_signups (tournament_id, discord_id, twitch_username, display_name) VALUES (%s, NULL, NULL, %s)",
                     (tid, display),
