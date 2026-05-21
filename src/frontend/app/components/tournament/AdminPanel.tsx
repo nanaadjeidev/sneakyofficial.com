@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus } from "lucide-react";
+import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -64,6 +64,15 @@ interface AdminTournament {
   team_size?: number;
   special_rules?: string | null;
   affects_rating?: boolean;
+}
+
+interface AdminMatch {
+  id: number;
+  round: number;
+  match_number: number;
+  team1: { id: number; name: string } | null;
+  team2: { id: number; name: string } | null;
+  status: string;
 }
 
 interface LocalTeam {
@@ -326,6 +335,101 @@ function ConfirmModal({
   );
 }
 
+// ---- Admin match reporter ------------------------------------------------
+
+function AdminMatchReporter({ tournamentId, onRefresh, flash }: {
+  tournamentId: number;
+  onRefresh: () => void;
+  flash: (text: string, ok: boolean) => void;
+}) {
+  const [matches, setMatches] = useState<AdminMatch[]>([]);
+  const [reporting, setReporting] = useState<number | null>(null);
+
+  const fetchMatches = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament`, {
+        params: { guild_id: GUILD_ID },
+      });
+      const pending: AdminMatch[] = (data.rounds ?? []).flatMap((r: { round: number; matches: AdminMatch[] }) =>
+        r.matches
+          .filter((m) => (m.status === "pending" || m.status === "awaiting_confirmation") && m.team1 && m.team2)
+          .map((m) => ({ ...m, round: r.round }))
+      );
+      setMatches(pending);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => { fetchMatches(); }, [fetchMatches]);
+
+  const reportWinner = async (matchId: number, winnerId: number) => {
+    setReporting(matchId);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/match/complete`,
+        { match_id: matchId, winner_team_id: winnerId },
+        { withCredentials: true }
+      );
+      flash(data.message, data.ok);
+      if (data.ok) { await fetchMatches(); onRefresh(); }
+    } catch {
+      flash("Failed to report match.", false);
+    } finally {
+      setReporting(null);
+    }
+  };
+
+  return (
+    <div className="mb-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Swords className="w-4 h-4 text-slate-400" />
+        <span className="text-sm font-semibold text-slate-300">Pending Matches</span>
+        <button onClick={fetchMatches} className="ml-auto text-slate-500 hover:text-slate-300">
+          <RefreshCw className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {matches.length === 0 ? (
+        <p className="text-xs text-slate-500 italic">No pending matches.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {matches.map((m) => (
+            <div key={m.id} className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-slate-500">Round {m.round} · Match #{m.id}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                  m.status === "awaiting_confirmation"
+                    ? "text-yellow-300 border-yellow-600/40 bg-yellow-900/20"
+                    : "text-slate-400 border-slate-600/40"
+                }`}>
+                  {m.status === "awaiting_confirmation" ? "Awaiting confirm" : "Pending"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => reportWinner(m.id, m.team1!.id)}
+                  disabled={reporting === m.id}
+                  className="flex-1 text-xs px-2 py-2 rounded border border-blue-700/50 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40 disabled:opacity-50 truncate"
+                >
+                  {m.team1?.name ?? "Team 1"} wins
+                </button>
+                <button
+                  onClick={() => reportWinner(m.id, m.team2!.id)}
+                  disabled={reporting === m.id}
+                  className="flex-1 text-xs px-2 py-2 rounded border border-purple-700/50 bg-purple-900/20 text-purple-300 hover:bg-purple-900/40 disabled:opacity-50 truncate"
+                >
+                  {m.team2?.name ?? "Team 2"} wins
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---- Main panel ----------------------------------------------------------
 
 export default function AdminPanel({
@@ -340,7 +444,8 @@ export default function AdminPanel({
   preTeams: PreTeam[];
   onRefresh: () => void;
   onCancel: () => void;
-}) {
+}
+) {
   const teamSize = tournament.team_size ?? 4;
   const signupsById = new Map(signups.map((s) => [s.id, s]));
 
@@ -814,15 +919,8 @@ export default function AdminPanel({
         </>
       )}
 
-      {tournament.status === "active" && (
-        <p className="text-sm text-slate-400">
-          Tournament is in progress. Use{" "}
-          <code className="text-purple-300 bg-slate-800 px-1 rounded">/tournament report</code> in Discord or{" "}
-          <code className="text-purple-300 bg-slate-800 px-1 rounded">!confirm</code> on Twitch to submit results.
-          <br />
-          To force-complete a match, use the Discord command{" "}
-          <code className="text-purple-300 bg-slate-800 px-1 rounded">/tournament admin-complete</code>.
-        </p>
+      {tournament.status === "active" && tournament.id !== 0 && (
+        <AdminMatchReporter tournamentId={tournament.id} onRefresh={onRefresh} flash={flash} />
       )}
 
       {tournament.id !== 0 && (

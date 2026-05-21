@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useLayoutEffect } from "react";
 import { Helmet } from "react-helmet";
 import axios from "axios";
-import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown } from "lucide-react";
+import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import AdminPanel, { type Signup, type PreTeam } from "../components/tournament/AdminPanel";
 import { useAuth } from "../hooks/useAuth";
@@ -130,7 +130,7 @@ function MatchStatusIcon({ status }: { status: Match["status"] }) {
 // ---- Team slot inside a match card ----------------------------------------
 
 function TeamSlot({
-  team, isWinner, isBye, isRecentWinner = false, isRecentLoser = false, isPlayerTeam = false,
+  team, isWinner, isBye, isRecentWinner = false, isRecentLoser = false, isPlayerTeam = false, onTeamClick,
 }: {
   team: Team | null;
   isWinner: boolean;
@@ -138,22 +138,26 @@ function TeamSlot({
   isRecentWinner?: boolean;
   isRecentLoser?: boolean;
   isPlayerTeam?: boolean;
+  onTeamClick?: (team: Team) => void;
 }) {
   if (isBye || !team) {
     return <div className="px-3 py-2 rounded text-slate-600 italic text-xs bg-slate-900/30">BYE</div>;
   }
   return (
-    <div className={`px-3 py-2 rounded transition-all duration-500 ${
-      isRecentWinner
-        ? "bg-green-500/25 border border-green-400/60 text-green-100 scale-[1.02] shadow-green-500/20 shadow"
-        : isRecentLoser
-        ? "bg-red-500/15 border border-red-500/30 text-red-300 opacity-60"
-        : isWinner
-        ? "bg-green-500/15 border border-green-500/40 text-green-200"
-        : isPlayerTeam
-        ? "bg-blue-500/20 border border-blue-400/50 text-blue-100 shadow shadow-blue-500/20"
-        : "bg-slate-900/40 border border-slate-700/40 text-slate-300"
-    }`}>
+    <div
+      className={`px-3 py-2 rounded transition-all duration-500 ${onTeamClick ? "cursor-pointer hover:brightness-110" : ""} ${
+        isRecentWinner
+          ? "bg-green-500/25 border border-green-400/60 text-green-100 scale-[1.02] shadow-green-500/20 shadow"
+          : isRecentLoser
+          ? "bg-red-500/15 border border-red-500/30 text-red-300 opacity-60"
+          : isWinner
+          ? "bg-green-500/15 border border-green-500/40 text-green-200"
+          : isPlayerTeam
+          ? "bg-blue-500/20 border border-blue-400/50 text-blue-100 shadow shadow-blue-500/20"
+          : "bg-slate-900/40 border border-slate-700/40 text-slate-300"
+      }`}
+      onClick={onTeamClick ? () => onTeamClick(team) : undefined}
+    >
       <div className="flex items-center gap-1.5">
         {isWinner && <Trophy className="w-3 h-3 text-yellow-400 shrink-0" />}
         {isRecentWinner && <span className="text-xs">🏆</span>}
@@ -174,6 +178,8 @@ function MatchCard({
   flashMatchId,
   recentWinnerTeamId,
   playerTeamId,
+  onTeamClick,
+  wide = false,
 }: {
   match: Match;
   isFinal: boolean;
@@ -182,6 +188,8 @@ function MatchCard({
   flashMatchId: number | null;
   recentWinnerTeamId: number | null;
   playerTeamId: number | null;
+  onTeamClick?: (team: Team) => void;
+  wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const isFlashing = flashMatchId === match.id;
@@ -200,7 +208,7 @@ function MatchCard({
     <div
       ref={ref}
       style={{ minHeight: CARD_H }}
-      className={`rounded-lg border p-1.5 w-52 flex flex-col gap-1 shadow-lg transition-all duration-500 ${
+      className={`rounded-lg border p-1.5 flex flex-col gap-1 shadow-lg transition-all duration-500 ${wide ? "w-full" : "w-52"} ${
         isFlashing
           ? "border-green-400/80 shadow-green-500/30 shadow-md scale-[1.03]"
           : isFinal && hasPlayerTeam
@@ -212,11 +220,13 @@ function MatchCard({
           : "border-slate-600/50 bg-slate-800/70"
       }`}
     >
-      {isFinal && (
-        <div className="text-center text-xs font-bold text-yellow-400/80 pb-0.5 tracking-widest uppercase">
-          Final
-        </div>
-      )}
+      <div className="flex items-center justify-between px-0.5 mb-0.5">
+        {isFinal
+          ? <span className="text-xs font-bold text-yellow-400/80 tracking-widest uppercase">Final</span>
+          : <span />
+        }
+        <span className="text-[10px] text-slate-600 font-mono">#{match.id}</span>
+      </div>
 
       {awaitingT1 ? (
         <div className="px-3 py-2 rounded bg-slate-900/30 text-slate-600 italic text-xs">TBD</div>
@@ -227,6 +237,7 @@ function MatchCard({
           isRecentWinner={recentWinnerTeamId === match.team1?.id && match.status === "complete"}
           isRecentLoser={isFlashing && match.winner_id !== null && match.winner_id !== match.team1?.id}
           isPlayerTeam={playerTeamId === match.team1?.id}
+          onTeamClick={onTeamClick}
         />
       )}
 
@@ -250,6 +261,7 @@ function MatchCard({
           isRecentWinner={recentWinnerTeamId === match.team2?.id && match.status === "complete"}
           isRecentLoser={isFlashing && match.winner_id !== null && match.winner_id !== match.team2?.id}
           isPlayerTeam={playerTeamId === match.team2?.id}
+          onTeamClick={onTeamClick}
         />
       )}
     </div>
@@ -268,6 +280,7 @@ function RoundColumn({
   flashMatchId,
   recentWinnerTeamId,
   playerTeamId,
+  onTeamClick,
 }: {
   round: number;
   matches: Match[];
@@ -278,6 +291,7 @@ function RoundColumn({
   flashMatchId: number | null;
   recentWinnerTeamId: number | null;
   playerTeamId: number | null;
+  onTeamClick?: (team: Team) => void;
 }) {
   const isFinalRound = round === totalRounds;
   const modeData  = schedule?.mode_id    ? MODES.find((m) => m.id === schedule.mode_id)       : null;
@@ -337,6 +351,7 @@ function RoundColumn({
             flashMatchId={flashMatchId}
             recentWinnerTeamId={recentWinnerTeamId}
             playerTeamId={playerTeamId}
+            onTeamClick={onTeamClick}
           />
         ))}
       </div>
@@ -346,7 +361,7 @@ function RoundColumn({
 
 // ---- Bracket with SVG connector lines ------------------------------------
 
-function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, playerTeamId }: { rounds: Round[]; totalRounds: number; flashMatchId: number | null; recentWinnerTeamId: number | null; playerTeamId: number | null }) {
+function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, playerTeamId, onTeamClick }: { rounds: Round[]; totalRounds: number; flashMatchId: number | null; recentWinnerTeamId: number | null; playerTeamId: number | null; onTeamClick?: (team: Team) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const matchEls     = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -491,6 +506,7 @@ function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, pl
               flashMatchId={flashMatchId}
               recentWinnerTeamId={recentWinnerTeamId}
               playerTeamId={playerTeamId}
+              onTeamClick={onTeamClick}
             />
           );
         })}
@@ -526,9 +542,196 @@ function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, pl
               flashMatchId={flashMatchId}
               recentWinnerTeamId={recentWinnerTeamId}
               playerTeamId={playerTeamId}
+              onTeamClick={onTeamClick}
             />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ---- Mobile round-by-round bracket view -----------------------------------
+
+const noopRegister: RegisterMatchFn = () => {};
+
+function MobileBracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, playerTeamId, onTeamClick }: {
+  rounds: Round[];
+  totalRounds: number;
+  flashMatchId: number | null;
+  recentWinnerTeamId: number | null;
+  playerTeamId: number | null;
+  onTeamClick?: (team: Team) => void;
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const round = rounds[activeIdx];
+  if (!round) return null;
+
+  const isFinalRound = round.round === totalRounds;
+  const roundLabel =
+    isFinalRound
+      ? "Final"
+      : round.round === totalRounds - 1 && totalRounds > 2
+      ? "Semis"
+      : `Round ${round.round}`;
+
+  const modeData  = round.schedule?.mode_id    ? MODES.find((m) => m.id === round.schedule!.mode_id)          : null;
+  const stageData = round.schedule?.stage_name ? STAGES.find((s) => s.name === round.schedule!.stage_name) : null;
+
+  const visibleMatches = round.matches.filter((m) => !m.is_bye);
+
+  return (
+    <div>
+      {/* Round navigation */}
+      <div className="flex items-center justify-between mb-4 px-1">
+        <button
+          onClick={() => setActiveIdx((i) => Math.max(0, i - 1))}
+          disabled={activeIdx === 0}
+          className="flex items-center gap-1 px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 text-sm"
+        >
+          <ChevronLeft className="w-4 h-4" /> Prev
+        </button>
+
+        <div className="text-center">
+          <div className="font-bold text-slate-200 text-sm">{roundLabel}</div>
+          <div className="text-xs text-slate-500">{activeIdx + 1} / {rounds.length}</div>
+        </div>
+
+        <button
+          onClick={() => setActiveIdx((i) => Math.min(rounds.length - 1, i + 1))}
+          disabled={activeIdx === rounds.length - 1}
+          className="flex items-center gap-1 px-3 py-1.5 rounded border border-slate-700 text-slate-400 hover:border-slate-500 disabled:opacity-30 text-sm"
+        >
+          Next <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Round schedule */}
+      {(stageData || modeData) && (
+        <div className="flex items-center gap-2 mb-4 px-1">
+          {stageData && (
+            <img src={stageData.image} alt={stageData.name} className="h-10 w-20 object-cover rounded border border-slate-700/40" />
+          )}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400">
+            {modeData && <img src={modeData.icon} alt={modeData.name} className="w-4 h-4 object-contain" />}
+            {round.schedule?.stage_name && <span>{round.schedule.stage_name}</span>}
+            {modeData && <span>· {modeData.name}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Matches */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {visibleMatches.map((m) => (
+          <MatchCard
+            key={m.id}
+            match={m}
+            isFinal={isFinalRound}
+            roundNum={round.round}
+            registerMatch={noopRegister}
+            flashMatchId={flashMatchId}
+            recentWinnerTeamId={recentWinnerTeamId}
+            playerTeamId={playerTeamId}
+            onTeamClick={onTeamClick}
+            wide
+          />
+        ))}
+        {visibleMatches.length === 0 && (
+          <p className="text-slate-500 text-sm italic col-span-2 text-center py-4">No matches scheduled yet.</p>
+        )}
+      </div>
+
+      {/* Round dots */}
+      <div className="flex justify-center gap-1.5 mt-5">
+        {rounds.map((_, i) => (
+          <button
+            key={i}
+            onClick={() => setActiveIdx(i)}
+            className={`rounded-full transition-all ${i === activeIdx ? "bg-purple-400 w-4 h-2" : "bg-slate-600 w-2 h-2 hover:bg-slate-500"}`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---- Team detail modal ----------------------------------------------------
+
+function TeamModal({ team, rounds, onClose }: { team: Team; rounds: Round[]; onClose: () => void }) {
+  const matchHistory = rounds.flatMap((r) =>
+    r.matches
+      .filter((m) => m.team1?.id === team.id || m.team2?.id === team.id)
+      .map((m) => ({ round: r.round, match: m }))
+  );
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+          <div>
+            <h2 className="text-lg font-bold text-white">{team.name}</h2>
+            <p className="text-xs text-slate-500">Seed #{team.seed}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 flex flex-col gap-5">
+          {/* Players */}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Players</h3>
+            <div className="flex flex-col gap-1.5">
+              {team.members.map((m) => (
+                <div key={m} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span className="text-sm text-slate-200">{m}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Match history */}
+          {matchHistory.length > 0 && (
+            <div>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Match History</h3>
+              <div className="flex flex-col gap-2">
+                {matchHistory.map(({ round, match }) => {
+                  const opponent = match.team1?.id === team.id ? match.team2 : match.team1;
+                  const won = match.winner_id === team.id;
+                  const lost = match.winner_id !== null && match.winner_id !== team.id;
+                  const isFinal = round === Math.max(...rounds.map((r) => r.round));
+                  const roundLabel = isFinal ? "Final" : round === Math.max(...rounds.map((r) => r.round)) - 1 && rounds.length > 2 ? "Semis" : `Round ${round}`;
+                  return (
+                    <div
+                      key={match.id}
+                      className={`flex items-center justify-between px-3 py-2.5 rounded-lg border text-sm ${
+                        won  ? "bg-green-900/20 border-green-700/40 text-green-200"
+                        : lost ? "bg-red-900/20 border-red-700/40 text-red-300"
+                        : "bg-slate-800/40 border-slate-700/40 text-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {won  && <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                        {lost && <X className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                        {!won && !lost && <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
+                        <span className="font-medium">{opponent?.name ?? "BYE"}</span>
+                      </div>
+                      <span className="text-xs text-slate-500">{roundLabel}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -741,6 +944,10 @@ export default function Tournament() {
   const [recentWinnerTeamId,  setRecentWinnerTeamId]  = useState<number | null>(null);
   const [myMatch,             setMyMatch]             = useState<MyMatch | null>(null);
   const [playerTeamId,        setPlayerTeamId]        = useState<number | null>(null);
+  const [bracketMode,         setBracketMode]         = useState<"full" | "rounds">(() =>
+    typeof window !== "undefined" && window.innerWidth < 768 ? "rounds" : "full"
+  );
+  const [selectedTeam,        setSelectedTeam]        = useState<Team | null>(null);
   const [myMatchLoading,      setMyMatchLoading]      = useState(false);
   const [reportLoading,       setReportLoading]       = useState(false);
   const [reportMsg,           setReportMsg]           = useState<string | null>(null);
@@ -793,7 +1000,8 @@ export default function Tournament() {
       });
       const m = res.match ?? null;
       setMyMatch(m);
-      if (m?.player_team_id != null) setPlayerTeamId(m.player_team_id);
+      const teamId = m?.player_team_id ?? res.player_team_id ?? null;
+      if (teamId != null) setPlayerTeamId(teamId);
     } catch {
       setMyMatch(null);
     } finally {
@@ -1104,10 +1312,62 @@ export default function Tournament() {
         {/* Bracket */}
         {tournament && rounds.length > 0 && (
           <div className="rounded-2xl border border-slate-700/50 bg-slate-800/60 backdrop-blur-sm shadow-2xl">
-            <div className="overflow-x-auto p-6">
-              <BracketView rounds={rounds} totalRounds={totalRounds} flashMatchId={flashMatchId} recentWinnerTeamId={recentWinnerTeamId} playerTeamId={playerTeamId} />
+            {/* View toggle */}
+            <div className="flex items-center justify-between px-5 pt-4 pb-2 border-b border-slate-700/40">
+              <span className="text-xs text-slate-500 font-semibold uppercase tracking-widest">Bracket</span>
+              <div className="flex gap-1 p-0.5 rounded-lg bg-slate-900/60 border border-slate-700/50">
+                <button
+                  onClick={() => setBracketMode("rounds")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    bracketMode === "rounds"
+                      ? "bg-slate-700 text-white shadow"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <List className="w-3.5 h-3.5" /> Round View
+                </button>
+                <button
+                  onClick={() => setBracketMode("full")}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                    bracketMode === "full"
+                      ? "bg-slate-700 text-white shadow"
+                      : "text-slate-500 hover:text-slate-300"
+                  }`}
+                >
+                  <Maximize2 className="w-3.5 h-3.5" /> Full Bracket
+                </button>
+              </div>
             </div>
+
+            {bracketMode === "rounds" ? (
+              <div className="p-5">
+                <MobileBracketView
+                  rounds={rounds}
+                  totalRounds={totalRounds}
+                  flashMatchId={flashMatchId}
+                  recentWinnerTeamId={recentWinnerTeamId}
+                  playerTeamId={playerTeamId}
+                  onTeamClick={setSelectedTeam}
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto p-6">
+                <BracketView
+                  rounds={rounds}
+                  totalRounds={totalRounds}
+                  flashMatchId={flashMatchId}
+                  recentWinnerTeamId={recentWinnerTeamId}
+                  playerTeamId={playerTeamId}
+                  onTeamClick={setSelectedTeam}
+                />
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Team modal */}
+        {selectedTeam && (
+          <TeamModal team={selectedTeam} rounds={rounds} onClose={() => setSelectedTeam(null)} />
         )}
 
         {/* Commands footer */}

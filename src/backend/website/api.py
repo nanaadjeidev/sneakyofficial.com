@@ -452,7 +452,7 @@ class SneakyApi:
 
     @verify_access_token
     async def serve_my_match(self, request: Request, discord_id: str) -> web.Response:
-        """Return the calling player's current active match."""
+        """Return the calling player's current active match and their team id (for subs with no active match)."""
         guild_id_param = request.rel_url.query.get("guild_id")
         if not guild_id_param:
             return web.json_response({"match": None})
@@ -460,9 +460,11 @@ class SneakyApi:
         if not tournament or tournament["status"] != "active":
             return web.json_response({"match": None})
         match = await TournamentManager.get_player_active_match(tournament["id"], discord_id=int(discord_id))
-        if not match:
-            return web.json_response({"match": None})
-        return web.json_response({"match": dict(match)})
+        player_team_id = (
+            match["player_team_id"] if match
+            else await TournamentManager.get_player_team_id(tournament["id"], discord_id=int(discord_id))
+        )
+        return web.json_response({"match": dict(match) if match else None, "player_team_id": player_team_id})
 
     @verify_access_token
     async def tournament_web_report(self, request: Request, discord_id: str) -> web.Response:

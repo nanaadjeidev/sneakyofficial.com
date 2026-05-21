@@ -497,6 +497,27 @@ class TournamentManager:
             return match
 
     @staticmethod
+    async def get_player_team_id(tournament_id: int, discord_id: Optional[int] = None, twitch_username: Optional[str] = None) -> Optional[int]:
+        """Return the team_id for a player (main or sub) in the given tournament, or None."""
+        async with DBContextManager(use_dict=True) as cur:
+            if discord_id:
+                await cur.execute(
+                    """SELECT ttm.team_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON ttm.signup_id = s.id
+                       WHERE s.tournament_id = %s AND s.discord_id = %s LIMIT 1""",
+                    (tournament_id, discord_id)
+                )
+            else:
+                await cur.execute(
+                    """SELECT ttm.team_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON ttm.signup_id = s.id
+                       WHERE s.tournament_id = %s AND LOWER(s.twitch_username) = LOWER(%s) LIMIT 1""",
+                    (tournament_id, twitch_username)
+                )
+            row = await cur.fetchone()
+            return row["team_id"] if row else None
+
+    @staticmethod
     async def report_win(
         match_id: int,
         winner_team_id: int,
