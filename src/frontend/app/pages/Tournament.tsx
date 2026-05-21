@@ -531,15 +531,24 @@ function WinnerBanner({ team }: { team: Team }) {
 
 // ---- Sign-up list ---------------------------------------------------------
 
-function SignupList({ signups }: { signups: PublicSignup[] }) {
+function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
+  signups: PublicSignup[];
+  newSignupKeys?: Set<string>;
+  exitingSignupKeys?: Set<string>;
+}) {
+  const visibleCount = signups.filter((s) => {
+    const key = s.discord_id ?? s.twitch_username ?? s.display_name;
+    return !(exitingSignupKeys?.has(key) ?? false);
+  }).length;
+
   return (
     <div className="py-10">
       <div className="text-center mb-6">
         <Users className="w-12 h-12 mx-auto mb-3 text-slate-600" />
         <p className="text-lg font-semibold text-slate-300">
           Sign-ups are open!{" "}
-          {signups.length > 0 && (
-            <span className="text-blue-400">({signups.length} signed up)</span>
+          {visibleCount > 0 && (
+            <span className="text-blue-400">({visibleCount} signed up)</span>
           )}
         </p>
         <p className="text-sm mt-1 text-slate-400">
@@ -551,15 +560,26 @@ function SignupList({ signups }: { signups: PublicSignup[] }) {
       </div>
       {signups.length > 0 && (
         <div className="max-w-2xl mx-auto grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {signups.map((s, i) => (
-            <div
-              key={s.discord_id ?? s.twitch_username ?? i}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/40 text-sm text-slate-300 animate-fade-in"
-            >
-              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-              <span className="truncate">{s.display_name}</span>
-            </div>
-          ))}
+          {signups.map((s, i) => {
+            const key = s.discord_id ?? s.twitch_username ?? i.toString();
+            const isNew = newSignupKeys?.has(key) ?? false;
+            const isExiting = exitingSignupKeys?.has(key) ?? false;
+            return (
+              <div
+                key={key}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm text-slate-300 ${
+                  isExiting
+                    ? "bg-slate-800/60 border-red-700/30 animate-signup-exit"
+                    : isNew
+                    ? "bg-green-950/40 border-green-600/50 animate-signup-enter"
+                    : "bg-slate-800/60 border-slate-700/40 animate-fade-in"
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full shrink-0 ${isExiting ? "bg-red-500" : isNew ? "bg-green-400" : "bg-green-500"}`} />
+                <span className="truncate">{s.display_name}</span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -673,6 +693,8 @@ export default function Tournament() {
   const [adminDataLoaded, setAdminDataLoaded] = useState(false);
 
   const [publicSignups,       setPublicSignups]       = useState<PublicSignup[]>([]);
+  const [newSignupKeys,       setNewSignupKeys]       = useState<Set<string>>(new Set());
+  const [exitingSignupKeys,   setExitingSignupKeys]   = useState<Set<string>>(new Set());
   const [flashMatchId,        setFlashMatchId]        = useState<number | null>(null);
   const [recentWinnerTeamId,  setRecentWinnerTeamId]  = useState<number | null>(null);
   const [myMatch,             setMyMatch]             = useState<MyMatch | null>(null);
@@ -756,19 +778,35 @@ export default function Tournament() {
           if (msg.event === "hello") {
             setPublicSignups(msg.signups ?? []);
           } else if (msg.event === "signup") {
-            setPublicSignups((prev) => [
-              ...prev,
-              { display_name: msg.display_name!, discord_id: msg.discord_id ?? null, twitch_username: msg.twitch_username ?? null },
-            ]);
+            const newSignup = { display_name: msg.display_name!, discord_id: msg.discord_id ?? null, twitch_username: msg.twitch_username ?? null };
+            const key = newSignup.discord_id ?? newSignup.twitch_username ?? newSignup.display_name;
+            setPublicSignups((prev) => [...prev, newSignup]);
+            setNewSignupKeys((prev) => new Set([...prev, key]));
+            setTimeout(() => setNewSignupKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }), 2000);
             if (isAdminRef.current) fetchAdminDataRef.current();
           } else if (msg.event === "leave") {
-            setPublicSignups((prev) =>
-              prev.filter((s) => {
-                if (msg.discord_id) return s.discord_id !== msg.discord_id;
-                if (msg.twitch_username) return s.twitch_username !== msg.twitch_username;
-                return true;
-              })
-            );
+            const leaveKey = msg.discord_id ?? msg.twitch_username ?? null;
+            if (leaveKey) {
+              setExitingSignupKeys((prev) => new Set([...prev, leaveKey]));
+              setTimeout(() => {
+                setPublicSignups((prev) =>
+                  prev.filter((s) => {
+                    if (msg.discord_id) return s.discord_id !== msg.discord_id;
+                    if (msg.twitch_username) return s.twitch_username !== msg.twitch_username;
+                    return true;
+                  })
+                );
+                setExitingSignupKeys((prev) => { const next = new Set(prev); next.delete(leaveKey); return next; });
+              }, 350);
+            } else {
+              setPublicSignups((prev) =>
+                prev.filter((s) => {
+                  if (msg.discord_id) return s.discord_id !== msg.discord_id;
+                  if (msg.twitch_username) return s.twitch_username !== msg.twitch_username;
+                  return true;
+                })
+              );
+            }
             if (isAdminRef.current) fetchAdminDataRef.current();
           } else if (msg.event === "match_reported") {
             fetchDataRef.current();
@@ -1013,7 +1051,7 @@ export default function Tournament() {
                 Format: {tournament.team_size}v{tournament.team_size}
               </p>
             )}
-            <SignupList signups={publicSignups} />
+            <SignupList signups={publicSignups} newSignupKeys={newSignupKeys} exitingSignupKeys={exitingSignupKeys} />
           </>
         )}
 

@@ -505,20 +505,18 @@ export default function AdminPanel({
             value={newSpecialRules}
             onChange={(e) => setNewSpecialRules(e.target.value)}
           />
-          {newSpecialRules.trim() && (
-            <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={newAffectsRating}
-                onChange={(e) => setNewAffectsRating(e.target.checked)}
-                className="w-4 h-4 accent-purple-500"
-              />
-              <span>Counts towards rating &amp; normal tournament wins</span>
-              {!newAffectsRating && (
-                <span className="text-xs text-amber-400 ml-1">(special wins only)</span>
-              )}
-            </label>
-          )}
+          <label className="flex items-center gap-2 text-sm text-slate-300 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={newAffectsRating}
+              onChange={(e) => setNewAffectsRating(e.target.checked)}
+              className="w-4 h-4 accent-purple-500"
+            />
+            <span>Counts towards rating &amp; normal tournament wins</span>
+            {!newAffectsRating && (
+              <span className="text-xs text-amber-400 ml-1">(special wins only)</span>
+            )}
+          </label>
         </div>
       )}
 

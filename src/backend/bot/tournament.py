@@ -1,4 +1,5 @@
 """Single-elimination Splatoon community tournament system."""
+import asyncio
 import logging
 import random
 
@@ -246,7 +247,13 @@ class TournamentExt(interactions.Extension):
             interactions.SlashCommandChoice(name="2v2", value=2),
         ],
     )
-    async def tournament_create(self, ctx: interactions.SlashContext, name: str, team_size: int = 4) -> None:
+    @slash_option(
+        name="affects_rating",
+        description="Whether results count towards TrueSkill ratings and tournament wins (default: yes)",
+        required=False,
+        opt_type=OptionType.BOOLEAN,
+    )
+    async def tournament_create(self, ctx: interactions.SlashContext, name: str, team_size: int = 4, affects_rating: bool = True) -> None:
         await ctx.defer()
         ok, msg, tid = await TournamentManager.create(
             guild_id=ctx.guild_id,
@@ -254,6 +261,7 @@ class TournamentExt(interactions.Extension):
             channel_id=ctx.channel_id,
             created_by=ctx.author_id,
             team_size=team_size,
+            affects_rating=affects_rating,
         )
         embed = _embed(
             "🏆 Tournament Created" if ok else "❌ Error",
@@ -264,6 +272,7 @@ class TournamentExt(interactions.Extension):
             embed.add_field("Bracket", f"[View bracket]({BRACKET_URL})", inline=True)
             embed.add_field("Sign-up command", "`/tournament signup`", inline=True)
             embed.add_field("Team size", f"{team_size}v{team_size}", inline=True)
+            embed.add_field("Ratings", "Affects rating" if affects_rating else "No rating impact", inline=True)
         await ctx.send(embed=embed)
 
     @tournament.subcommand(sub_cmd_name="lock", sub_cmd_description="Close sign-ups and generate the bracket")
@@ -356,22 +365,37 @@ class TournamentExt(interactions.Extension):
 
             names_used = list(_BOT_ADJECTIVES[:count])
             random.shuffle(names_used)
-            added = 0
+            added_names: list[str] = []
             for adj in names_used[:count]:
+                display = f"TestBot {adj}"
                 await cur.execute(
                     "INSERT INTO tournament_signups (tournament_id, discord_id, twitch_username, display_name) VALUES (%s, NULL, NULL, %s)",
-                    (tid, f"TestBot {adj}"),
+                    (tid, display),
                 )
-                added += 1
+                added_names.append(display)
 
         embed = _embed(
             "🤖 Bots Added",
-            f"Added **{added}** fake players to **{tname}**.\n"
-            f"Total signups now: **{existing + added}**\n\n"
+            f"Added **{len(added_names)}** fake players to **{tname}**.\n"
+            f"Total signups now: **{existing + len(added_names)}**\n\n"
             f"Lock the tournament from the admin panel or `/tournament lock` when ready.",
             0x3498db,
         )
         await ctx.send(embed=embed)
+
+        # Broadcast each bot signup so the frontend animates them in one by one
+        from backend.util.broadcaster import TournamentBroadcaster
+        broadcaster = TournamentBroadcaster.get()
+        for i, display in enumerate(added_names):
+            await broadcaster.broadcast({
+                "event": "signup",
+                "tournament_id": tid,
+                "display_name": display,
+                "discord_id": None,
+                "twitch_username": None,
+                "count": existing + i + 1,
+            })
+            await asyncio.sleep(0.15)
 
     @tournament.subcommand(
         sub_cmd_name="quicktest",
