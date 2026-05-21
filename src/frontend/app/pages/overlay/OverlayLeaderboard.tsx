@@ -22,6 +22,12 @@ export default function OverlayLeaderboard() {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
+    document.body.classList.add("overlay-mode");
+    document.documentElement.style.background = "transparent";
+    return () => document.body.classList.remove("overlay-mode");
+  }, []);
+
+  useEffect(() => {
     axios.get(`${API_URL}/api/leaderboard`, { params: { sort: "rating", limit: 10 } })
       .then(({ data }) => setPlayers((data.leaderboard ?? []).slice(0, 10)))
       .catch(() => {});
@@ -51,7 +57,7 @@ export default function OverlayLeaderboard() {
   const posColor = POSITION_COLORS[currentIdx] ?? "text-white/40";
 
   return (
-    <div className="p-3">
+    <div data-overlay className="p-3">
       <div
         className="rounded-xl overflow-hidden"
         style={{

@@ -38,6 +38,12 @@ function getRoundLabel(round: number, total: number): string {
 export default function OverlayUpNext() {
   const [match, setMatch] = useState<UpNextData | null>(null);
 
+  useEffect(() => {
+    document.body.classList.add("overlay-mode");
+    document.documentElement.style.background = "transparent";
+    return () => document.body.classList.remove("overlay-mode");
+  }, []);
+
   const fetchMatch = async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/tournament/overlay-upnext`, {

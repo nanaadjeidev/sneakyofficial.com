@@ -229,7 +229,7 @@ function FullOverlay({ data }: { data: BracketData }) {
   }
 
   return (
-    <div className="w-screen h-screen flex flex-col" style={{ background: "rgba(6,6,14,0.92)", backdropFilter: "blur(24px)" }}>
+    <div data-overlay className="w-screen h-screen flex flex-col" style={{ background: "rgba(6,6,14,0.92)", backdropFilter: "blur(24px)" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 border-b border-white/8 shrink-0">
         <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
@@ -289,6 +289,12 @@ function FullOverlay({ data }: { data: BracketData }) {
 export default function OverlayBracket() {
   const style = useQueryParam("style") ?? "corner";
   const [data, setData] = useState<BracketData | null>(null);
+
+  useEffect(() => {
+    document.body.classList.add("overlay-mode");
+    document.documentElement.style.background = "transparent";
+    return () => document.body.classList.remove("overlay-mode");
+  }, []);
 
   const fetchData = useCallback(async () => {
     if (!GUILD_ID) return;

@@ -88,6 +88,12 @@ function TeamCard({ team, games, bestOf, isWinner, side }: {
 }
 
 export default function OverlayMatch() {
+  useEffect(() => {
+    document.body.classList.add("overlay-mode");
+    document.documentElement.style.background = "transparent";
+    return () => document.body.classList.remove("overlay-mode");
+  }, []);
+
   const [match, setMatch] = useState<OverlayMatchData | null>(null);
   const [, setPrevScores] = useState<[number, number]>([0, 0]);
   const [scoreFlash, setScoreFlash] = useState(false);
