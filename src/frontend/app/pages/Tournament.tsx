@@ -199,7 +199,10 @@ function MatchCard({
     return () => registerMatch(roundNum, match.match_number, null);
   }, [roundNum, match.match_number, registerMatch]);
 
-  const isBye        = match.is_bye;
+  // is_bye is true whenever team2_id IS NULL in the DB, which includes future
+  // unplayed matches where neither team is known yet. Only treat it as a real
+  // bye when team1 is already set (one team advanced, no opponent exists).
+  const isBye        = match.is_bye && match.team1 !== null;
   const awaitingT1   = !match.team1;
   const awaitingT2   = !match.team2 && !isBye;
   const hasPlayerTeam = playerTeamId != null && (match.team1?.id === playerTeamId || match.team2?.id === playerTeamId);
@@ -1191,6 +1194,34 @@ export default function Tournament() {
   const rounds      = data?.rounds ?? [];
   const totalRounds = rounds.length;
 
+  // ---- Drag-to-pan for full bracket view ----------------------------------
+  const bracketScrollRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleBracketPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    const target = e.target as Element;
+    if (target.closest("button, a, input")) return;
+    const el = bracketScrollRef.current;
+    if (!el) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    setIsDragging(true);
+    const startX = e.clientX + el.scrollLeft;
+    const startY = e.clientY + el.scrollTop;
+    const onMove = (me: PointerEvent) => {
+      el.scrollLeft = startX - me.clientX;
+      el.scrollTop  = startY - me.clientY;
+    };
+    const onUp = () => {
+      setIsDragging(false);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup",   onUp);
+    };
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup",   onUp);
+  }, []);
+
   const winner = (() => {
     if (tournament?.status !== "complete" || rounds.length === 0) return null;
     const fm = rounds[rounds.length - 1]?.matches[0];
@@ -1234,7 +1265,7 @@ export default function Tournament() {
         </div>
 
         {/* Match report card — logged-in non-admin players in an active match */}
-        {loggedIn && !isAdmin && !myMatchLoading && myMatch && (
+        {loggedIn && !myMatchLoading && myMatch && (
           <MatchReportCard
             match={myMatch}
             loading={reportLoading}
@@ -1351,7 +1382,11 @@ export default function Tournament() {
                 />
               </div>
             ) : (
-              <div className="overflow-x-auto p-6">
+              <div
+                ref={bracketScrollRef}
+                className={`overflow-auto p-6 select-none ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+                onPointerDown={handleBracketPointerDown}
+              >
                 <BracketView
                   rounds={rounds}
                   totalRounds={totalRounds}
