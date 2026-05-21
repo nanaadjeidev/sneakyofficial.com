@@ -570,6 +570,8 @@ class ProfileManager:
                 )
             rows = list(await cur.fetchall())
         for r in rows:
+            if r.get("discord_id") is not None:
+                r["discord_id"] = str(r["discord_id"])
             r["rating"] = _conservative(r["trueskill_mu"], r["trueskill_sigma"])
             r["rank_name"] = rank_display(r.get("rank"), r.get("rank_tier"))
             r["rank_emoji"] = RANK_EMOJIS.get(r.get("rank"), "❓")
