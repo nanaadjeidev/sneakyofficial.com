@@ -71,8 +71,10 @@ function TeamCard({ team, games, bestOf, isWinner, side }: {
       }`}>
         {team.name}
       </div>
-      <div className="text-xs text-white/50 mb-2 font-medium">
-        {team.members.join(" · ")}
+      <div className={`flex flex-col gap-0.5 mb-2 ${side === "right" ? "items-end" : "items-start"}`}>
+        {team.members.map((name) => (
+          <span key={name} className="text-xs text-white/50 font-medium leading-tight">{name}</span>
+        ))}
       </div>
       {bestOf > 1 && (
         <div className={`flex gap-1.5 ${side === "right" ? "flex-row-reverse" : "flex-row"}`}>
@@ -90,6 +92,8 @@ export default function OverlayMatch() {
   const [, setPrevScores] = useState<[number, number]>([0, 0]);
   const [scoreFlash, setScoreFlash] = useState(false);
   const scoreRef = useRef<[number, number]>([0, 0]);
+  // stageKey increments on every counterpick reveal, driving the CSS animation
+  const [stageKey, setStageKey] = useState(0);
 
   const fetchMatch = async () => {
     try {
@@ -132,6 +136,18 @@ export default function OverlayMatch() {
               if (!prev || prev.match_id !== msg.match_id) return prev;
               return { ...prev, team1_games: msg.team1_games ?? 0, team2_games: msg.team2_games ?? 0 };
             });
+          } else if (msg.event === "counterpick_stage") {
+            setMatch((prev) => {
+              if (!prev || prev.match_id !== msg.match_id) return prev;
+              const games = prev.games.map((g) =>
+                g.game_number === msg.game_number ? { ...g, stage_name: msg.stage_name } : g
+              );
+              // If this is the current game slot, update stage_name at the top level too
+              const currentGame = prev.team1_games + prev.team2_games + 1;
+              const stageName = msg.game_number === currentGame ? msg.stage_name : prev.stage_name;
+              return { ...prev, games, stage_name: stageName };
+            });
+            setStageKey((k) => k + 1);
           }
         } catch { /* ignore */ }
       };
@@ -167,9 +183,9 @@ export default function OverlayMatch() {
         border: "1px solid rgba(255,255,255,0.10)",
         backdropFilter: "blur(24px)",
       }}>
-        {/* Stage background */}
+        {/* Stage background — keyed so it fades in fresh on each counterpick reveal */}
         {stageData && (
-          <div className="absolute inset-0 overflow-hidden">
+          <div key={`bg-${stageKey}`} className="absolute inset-0 overflow-hidden stage-bg-enter">
             <img src={stageData.image} alt="" className="w-full h-full object-cover opacity-15 scale-110" />
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/40 to-black/70" />
           </div>
@@ -199,7 +215,11 @@ export default function OverlayMatch() {
             {match.mode_name && (
               <>
                 <span className="text-white/20">·</span>
-                <span className="text-[10px] font-bold tracking-[0.15em] text-white/40 uppercase">
+                <span
+                  key={`stage-${stageKey}`}
+                  className="text-[10px] font-bold tracking-[0.15em] uppercase stage-name-enter"
+                  style={{ color: currentStageName ? "rgba(255,255,255,0.65)" : "rgba(255,200,80,0.7)" }}
+                >
                   {currentStageName ?? "?"}
                 </span>
               </>

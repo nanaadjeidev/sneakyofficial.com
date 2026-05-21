@@ -527,6 +527,42 @@ class SneakyApi:
             logger.exception("Overlay data error: %s", e)
             return web.json_response({"error": "Server error"}, status=500)
 
+    @verify_tournament_admin
+    async def tournament_admin_set_match_game_stage(self, request: Request, admin_id: int) -> web.Response:
+        """Set the counterpick stage for a specific game in a match."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+            stage_name = body.get("stage_name")  # None = clear
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        async with DBContextManager() as cur:
+            await cur.execute(
+                "SELECT tournament_id, round FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return web.json_response({"error": "Match not found"}, status=404)
+            tournament_id, round_num = row[0], row[1]
+            await cur.execute(
+                """INSERT INTO tournament_round_games (tournament_id, round, game_number, stage_name)
+                   VALUES (%s, %s, %s, %s)
+                   ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)""",
+                (tournament_id, round_num, game_number, stage_name)
+            )
+
+        from ..util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "counterpick_stage",
+            "match_id": match_id,
+            "game_number": game_number,
+            "stage_name": stage_name,
+        })
+        return web.json_response({"ok": True})
+
     async def serve_overlay_upnext(self, request: Request) -> web.Response:
         """Return the next pending (unpinned) match for the 'up next' overlay."""
         guild_id_param = request.rel_url.query.get("guild_id")

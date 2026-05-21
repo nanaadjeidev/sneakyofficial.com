@@ -103,6 +103,27 @@ body:has([data-overlay]) #root {
   pointer-events: none;
 }
 
+/* ── Overlay counterpick stage reveal animations ────────────────────────── */
+
+@keyframes stage-name-enter {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.92); letter-spacing: 0.35em; }
+  60%  { opacity: 1; transform: translateY(-1px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.stage-name-enter {
+  animation: stage-name-enter 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes stage-bg-enter {
+  0%   { opacity: 0; transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.stage-bg-enter {
+  animation: stage-bg-enter 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 /* Scrollbar — matches dark background */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: #0a0a0a; }

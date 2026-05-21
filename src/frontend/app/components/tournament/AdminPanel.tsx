@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
 import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
+import { STAGES } from "./splatoonData";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
@@ -66,6 +67,17 @@ interface AdminTournament {
   affects_rating?: boolean;
 }
 
+interface GameMap {
+  game_number: number;
+  stage_name: string | null;
+}
+
+interface RoundSchedule {
+  best_of: number;
+  mode_name: string | null;
+  games: GameMap[];
+}
+
 interface AdminMatch {
   id: number;
   round: number;
@@ -73,6 +85,7 @@ interface AdminMatch {
   team1: { id: number; name: string } | null;
   team2: { id: number; name: string } | null;
   status: string;
+  schedule?: RoundSchedule | null;
 }
 
 interface LocalTeam {
@@ -345,17 +358,22 @@ function AdminMatchReporter({ onRefresh, flash }: {
   const [reporting, setReporting] = useState<number | null>(null);
   const [pinnedId, setPinnedId] = useState<number | null>(null);
   const [scores, setScores] = useState<Record<number, [number, number]>>({});
+  // matchId → gameNumber → stageName (local overrides shown after counterpick picks)
+  const [gameStages, setGameStages] = useState<Record<number, Record<number, string | null>>>({});
 
   const fetchMatches = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API_URL}/api/tournament`, {
         params: { guild_id: GUILD_ID },
       });
-      const pending: AdminMatch[] = (data.rounds ?? []).flatMap((r: { round: number; matches: AdminMatch[] }) =>
-        r.matches
+      const pending: AdminMatch[] = (data.rounds ?? []).flatMap((r: { round: number; matches: AdminMatch[]; schedule?: { best_of?: number; mode_name?: string; games?: GameMap[] } | null }) => {
+        const sched: RoundSchedule | null = r.schedule
+          ? { best_of: r.schedule.best_of ?? 1, mode_name: r.schedule.mode_name ?? null, games: r.schedule.games ?? [] }
+          : null;
+        return r.matches
           .filter((m) => (m.status === "pending" || m.status === "awaiting_confirmation") && m.team1 && m.team2)
-          .map((m) => ({ ...m, round: r.round }))
-      );
+          .map((m) => ({ ...m, round: r.round, schedule: sched }));
+      });
       setMatches(pending);
       // Sync game scores from data
       const scoreMap: Record<number, [number, number]> = {};
@@ -393,6 +411,22 @@ function AdminMatchReporter({ onRefresh, flash }: {
       setPinnedId(matchId);
     } catch {
       flash("Failed to pin match.", false);
+    }
+  };
+
+  const setGameStage = async (matchId: number, gameNumber: number, stageName: string | null) => {
+    setGameStages((prev) => ({
+      ...prev,
+      [matchId]: { ...(prev[matchId] ?? {}), [gameNumber]: stageName },
+    }));
+    try {
+      await axios.post(
+        `${API_URL}/api/tournament/admin/match-game-stage`,
+        { match_id: matchId, game_number: gameNumber, stage_name: stageName },
+        { withCredentials: true }
+      );
+    } catch {
+      flash("Failed to set counterpick stage.", false);
     }
   };
 
@@ -464,6 +498,35 @@ function AdminMatchReporter({ onRefresh, flash }: {
                   </div>
                   <span className="text-[10px] text-slate-600 ml-1">{m.team1?.name} · {m.team2?.name}</span>
                 </div>
+
+                {/* Counterpick stage pickers — shown when a schedule with games exists */}
+                {m.schedule && m.schedule.games.length > 0 && (
+                  <div className="mb-2 flex flex-col gap-1">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">Maps</span>
+                    {m.schedule.games.map((gm) => {
+                      const overrideName = gameStages[m.id]?.[gm.game_number];
+                      const stageName = overrideName !== undefined ? overrideName : gm.stage_name;
+                      const label = gm.game_number === 1
+                        ? m.schedule!.best_of === 1 ? "Stage" : "G1 — Home pick"
+                        : `G${gm.game_number} — Counterpick`;
+                      return (
+                        <div key={gm.game_number} className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-600 shrink-0 w-28">{label}</span>
+                          <select
+                            value={stageName ?? ""}
+                            onChange={(e) => setGameStage(m.id, gm.game_number, e.target.value || null)}
+                            className="flex-1 text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-purple-500"
+                          >
+                            <option value="">? (not set)</option>
+                            {STAGES.map((s) => (
+                              <option key={s.name} value={s.name}>{s.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 <div className="flex gap-2">
                   <button
