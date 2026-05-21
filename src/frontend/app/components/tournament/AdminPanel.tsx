@@ -468,6 +468,28 @@ export default function AdminPanel({
 
   const flash = (text: string, ok: boolean) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
 
+  // ---- Sync new/removed signups into the unassigned pool -----------------
+  const prevSignupIdsRef = useRef<Set<number>>(new Set(signups.map((s) => s.id)));
+  useEffect(() => {
+    const incomingIds = new Set(signups.map((s) => s.id));
+    const prev = prevSignupIdsRef.current;
+    const added   = signups.filter((s) => !prev.has(s.id)).map((s) => s.id);
+    const removed = new Set([...prev].filter((id) => !incomingIds.has(id)));
+    prevSignupIdsRef.current = incomingIds;
+    if (added.length > 0)
+      setUnassigned((p) => [...p, ...added.filter((id) => !p.includes(id))]);
+    if (removed.size > 0) {
+      setTeams((p) => p.map((t) => ({
+        ...t,
+        signupIds:    t.signupIds.filter((id) => !removed.has(id)),
+        subSignupIds: t.subSignupIds.filter((id) => !removed.has(id)),
+        captainSignupId: removed.has(t.captainSignupId ?? -1) ? null : t.captainSignupId,
+      })));
+      setUnassigned((p) => p.filter((id) => !removed.has(id)));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signups]);
+
   // ---- Warn on unsaved changes -------------------------------------------
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
