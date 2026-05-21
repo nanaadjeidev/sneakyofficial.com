@@ -92,12 +92,12 @@ function CornerOverlay({ data }: { data: BracketData }) {
         </div>
 
         {/* Stage/mode bar */}
-        {(stageData || modeData) && (
+        {modeData && (
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/5">
             {stageData && <img src={stageData.image} alt={stageData.name} className="h-6 w-10 object-cover rounded shrink-0 opacity-80" />}
             <div className="flex items-center gap-1">
-              {modeData && <img src={modeData.icon} alt={modeData.name} className="w-3.5 h-3.5 object-contain opacity-60" />}
-              {activeRound.schedule?.stage_name && <span className="text-[10px] text-white/40 truncate">{activeRound.schedule.stage_name}</span>}
+              <img src={modeData.icon} alt={modeData.name} className="w-3.5 h-3.5 object-contain opacity-60" />
+              <span className="text-[10px] text-white/40 truncate">{activeRound.schedule?.stage_name ?? "?"}</span>
             </div>
           </div>
         )}
@@ -190,6 +190,7 @@ function FullOverlay({ data }: { data: BracketData }) {
                     </span>
                     {stageData && <img src={stageData.image} alt="" className="h-4 w-7 object-cover rounded opacity-50" />}
                     {modeData && <img src={modeData.icon} alt={modeData.name} className="w-3 h-3 object-contain opacity-50" />}
+                    {modeData && <span className="text-[9px] text-white/30">{r.schedule?.stage_name ?? "?"}</span>}
                   </div>
                   {/* Matches */}
                   <div className="flex flex-col gap-1.5">

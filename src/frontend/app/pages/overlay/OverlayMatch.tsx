@@ -153,9 +153,7 @@ export default function OverlayMatch() {
   const currentGameNum = match.team1_games + match.team2_games + 1;
   const games = match.games ?? [];
   const currentGameMap = games.find((g) => g.game_number === currentGameNum);
-  // stage_name from server already reflects current game; fall back to games lookup
   const currentStageName = match.stage_name ?? currentGameMap?.stage_name ?? null;
-  const isCounterpickPending = games.length > 0 && currentGameNum > 1 && currentGameMap?.stage_name == null;
 
   const modeData = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
   const stageData = currentStageName ? STAGES.find((s) => s.name === currentStageName) : null;
@@ -198,7 +196,7 @@ export default function OverlayMatch() {
                 </div>
               </>
             )}
-            {(currentStageName || isCounterpickPending) && (
+            {match.mode_name && (
               <>
                 <span className="text-white/20">·</span>
                 <span className="text-[10px] font-bold tracking-[0.15em] text-white/40 uppercase">

@@ -83,7 +83,6 @@ export default function OverlayUpNext() {
   const modeData = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
   const game1Stage = match.stage_name ?? match.games?.find((g) => g.game_number === 1)?.stage_name ?? null;
   const stageData = game1Stage ? STAGES.find((s) => s.name === game1Stage) : null;
-  const isCounterpick = !game1Stage && (match.games?.length ?? 0) > 0;
   const bestOf = match.best_of ?? 1;
 
   return (
@@ -130,7 +129,7 @@ export default function OverlayUpNext() {
                 </div>
               </>
             )}
-            {(game1Stage || isCounterpick) && (
+            {match.mode_name && (
               <>
                 <span className="text-white/20">·</span>
                 <span className="text-[10px] font-bold tracking-[0.15em] text-white/35 uppercase">
@@ -154,18 +153,11 @@ export default function OverlayUpNext() {
           </div>
 
           {/* Stage thumbnail */}
-          {stageData && (
+          {match.mode_name && (
             <div className="mt-3 flex justify-center">
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/8">
-                <img src={stageData.image} alt={stageData.name} className="h-5 w-9 object-cover rounded opacity-80" />
-                <span className="text-[10px] text-white/40 font-medium">{stageData.name}</span>
-              </div>
-            </div>
-          )}
-          {isCounterpick && (
-            <div className="mt-3 flex justify-center">
-              <div className="px-3 py-1.5 rounded-lg bg-white/5 border border-white/8">
-                <span className="text-[10px] text-white/30 font-medium">Stage: ?</span>
+                {stageData && <img src={stageData.image} alt={stageData.name} className="h-5 w-9 object-cover rounded opacity-80" />}
+                <span className="text-[10px] text-white/40 font-medium">{game1Stage ?? "?"}</span>
               </div>
             </div>
           )}
