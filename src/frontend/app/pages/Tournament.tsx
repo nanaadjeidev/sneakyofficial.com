@@ -1571,16 +1571,38 @@ export default function Tournament() {
         )}
 
         {/* Commands footer */}
-        <div className="mt-10 border-t border-slate-800 pt-6 text-xs text-slate-500 space-y-1">
-          <p>
-            <span className="text-slate-400">Discord:</span>{" "}
-            /tournament signup · /tournament report · /tournament status
-          </p>
-          <p>
-            <span className="text-slate-400">Twitch:</span>{" "}
-            !signup · !bracket · !confirm · !dispute
-          </p>
-          <p className="mt-2 text-slate-600">Sign-ups and match results update in real time via WebSocket.</p>
+        <div className="mt-10 border-t border-slate-800 pt-6 text-xs text-slate-500 space-y-2">
+          <div className="flex flex-wrap gap-x-6 gap-y-1">
+            <div>
+              <span className="text-slate-400 font-semibold">Discord</span>
+              <div className="mt-1 space-y-0.5">
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament signup</code> — enter the tournament</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament leave</code> — withdraw from sign-ups</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament status</code> — current round info &amp; your match</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament bracket</code> — bracket link</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament matchinfo</code> — your map, mode &amp; opponent</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament room</code> — get your lobby code (home team)</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament report win/loss</code> — report match result</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament nameteam</code> — set team name (captains)</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">/tournament players</code> — list all signed-up players</p>
+              </div>
+            </div>
+            <div>
+              <span className="text-slate-400 font-semibold">Twitch</span>
+              <div className="mt-1 space-y-0.5">
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!signup</code> <span className="text-slate-600">· !in · !join · !enter</span> — enter the tournament</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!unsignup</code> <span className="text-slate-600">· !out · !leave · !exit</span> — withdraw from sign-ups</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!splattag Name#1234</code> — set your Splatoon tag (required once)</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!confirmtag</code> / <code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!canceltag</code> — confirm or cancel tag change</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!bracket</code> — bracket link</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!tournament</code> — current status</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!report win/loss</code> — report match result</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!confirm</code> / <code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!dispute</code> — confirm or dispute result</p>
+                <p><code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!rank</code> / <code className="bg-slate-800/80 px-1.5 py-0.5 rounded text-purple-300">!stats</code> — your rank &amp; match stats</p>
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-slate-600">Sign-ups and match results update in real time via WebSocket.</p>
         </div>
       </div>
     </PageWrapper>

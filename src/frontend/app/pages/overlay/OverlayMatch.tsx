@@ -238,7 +238,7 @@ export default function OverlayMatch() {
 
             {/* Score */}
             <div className="flex flex-col items-center shrink-0">
-              {bestOf > 1 ? (
+              {(bestOf > 1 || match.team1_games > 0 || match.team2_games > 0) ? (
                 <div className={`flex items-center gap-2 transition-all duration-300 ${scoreFlash ? "scale-125" : "scale-100"}`}>
                   <span className={`text-4xl font-black tabular-nums transition-all duration-300 ${
                     match.team1_games > match.team2_games ? "text-emerald-300" : "text-white"

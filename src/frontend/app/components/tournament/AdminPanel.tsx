@@ -499,34 +499,41 @@ function AdminMatchReporter({ onRefresh, flash }: {
                   <span className="text-[10px] text-slate-600 ml-1">{m.team1?.name} · {m.team2?.name}</span>
                 </div>
 
-                {/* Counterpick stage pickers — shown when a schedule with games exists */}
-                {m.schedule && m.schedule.games.length > 0 && (
-                  <div className="mb-2 flex flex-col gap-1">
-                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">Maps</span>
-                    {m.schedule.games.map((gm) => {
-                      const overrideName = gameStages[m.id]?.[gm.game_number];
-                      const stageName = overrideName !== undefined ? overrideName : gm.stage_name;
-                      const label = gm.game_number === 1
-                        ? m.schedule!.best_of === 1 ? "Stage" : "G1 — Home pick"
-                        : `G${gm.game_number} — Counterpick`;
-                      return (
-                        <div key={gm.game_number} className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-600 shrink-0 w-28">{label}</span>
-                          <select
-                            value={stageName ?? ""}
-                            onChange={(e) => setGameStage(m.id, gm.game_number, e.target.value || null)}
-                            className="flex-1 text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-purple-500"
-                          >
-                            <option value="">? (not set)</option>
-                            {STAGES.map((s) => (
-                              <option key={s.name} value={s.name}>{s.name}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Stage pickers — always shown, slots derived from best_of */}
+                {(() => {
+                  const bestOf = m.schedule?.best_of ?? 1;
+                  const slots = Array.from({ length: bestOf }, (_, i) => {
+                    const gameNum = i + 1;
+                    const overrideName = gameStages[m.id]?.[gameNum];
+                    const existingStage = m.schedule?.games.find((g) => g.game_number === gameNum)?.stage_name ?? null;
+                    return { game_number: gameNum, stage_name: overrideName !== undefined ? overrideName : existingStage };
+                  });
+                  return (
+                    <div className="mb-2 flex flex-col gap-1">
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Maps</span>
+                      {slots.map((gm) => {
+                        const label = gm.game_number === 1
+                          ? bestOf === 1 ? "Stage" : "G1 — Home pick"
+                          : `G${gm.game_number} — Counterpick`;
+                        return (
+                          <div key={gm.game_number} className="flex items-center gap-2">
+                            <span className="text-[10px] text-slate-600 shrink-0 w-28">{label}</span>
+                            <select
+                              value={gm.stage_name ?? ""}
+                              onChange={(e) => setGameStage(m.id, gm.game_number, e.target.value || null)}
+                              className="flex-1 text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-purple-500"
+                            >
+                              <option value="">? (not set)</option>
+                              {STAGES.map((s) => (
+                                <option key={s.name} value={s.name}>{s.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
 
                 <div className="flex gap-2">
                   <button
