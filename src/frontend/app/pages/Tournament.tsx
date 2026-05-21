@@ -71,6 +71,8 @@ interface Match {
   winner_id: number | null;
   status: "pending" | "awaiting_confirmation" | "complete";
   is_bye: boolean;
+  feeder1_match_id?: number | null;
+  feeder2_match_id?: number | null;
 }
 
 interface RoundSchedule {
@@ -199,12 +201,9 @@ function MatchCard({
     return () => registerMatch(roundNum, match.match_number, null);
   }, [roundNum, match.match_number, registerMatch]);
 
-  // is_bye is true whenever team2_id IS NULL in the DB, which includes future
-  // unplayed matches where neither team is known yet. Only treat it as a real
-  // bye when team1 is already set (one team advanced, no opponent exists).
-  const isBye        = match.is_bye && match.team1 !== null;
-  const awaitingT1   = !match.team1;
-  const awaitingT2   = !match.team2 && !isBye;
+  const isBye      = match.is_bye;
+  const awaitingT1 = !match.team1 && !isBye;
+  const awaitingT2 = !match.team2 && !isBye;
   const hasPlayerTeam = playerTeamId != null && (match.team1?.id === playerTeamId || match.team2?.id === playerTeamId);
 
   return (
@@ -232,7 +231,9 @@ function MatchCard({
       </div>
 
       {awaitingT1 ? (
-        <div className="px-3 py-2 rounded bg-slate-900/30 text-slate-600 italic text-xs">TBD</div>
+        <div className="px-3 py-2 rounded bg-slate-900/30 text-slate-600 italic text-xs">
+          {match.feeder1_match_id ? `Match #${match.feeder1_match_id} winner` : "TBD"}
+        </div>
       ) : (
         <TeamSlot
           team={match.team1}
@@ -256,7 +257,9 @@ function MatchCard({
       {isBye ? (
         <TeamSlot team={null} isWinner={false} isBye />
       ) : awaitingT2 ? (
-        <div className="px-3 py-2 rounded bg-slate-900/30 text-slate-600 italic text-xs">TBD</div>
+        <div className="px-3 py-2 rounded bg-slate-900/30 text-slate-600 italic text-xs">
+          {match.feeder2_match_id ? `Match #${match.feeder2_match_id} winner` : "TBD"}
+        </div>
       ) : (
         <TeamSlot
           team={match.team2}
@@ -1204,17 +1207,27 @@ export default function Tournament() {
     if (target.closest("button, a, input")) return;
     const el = bracketScrollRef.current;
     if (!el) return;
-    e.preventDefault();
-    el.setPointerCapture(e.pointerId);
-    setIsDragging(true);
-    const startX = e.clientX + el.scrollLeft;
-    const startY = e.clientY + el.scrollTop;
+    const pointerId   = e.pointerId;
+    const startScrollX = el.scrollLeft;
+    const startScrollY = el.scrollTop;
+    const originX      = e.clientX;
+    const originY      = e.clientY;
+    let dragging = false;
     const onMove = (me: PointerEvent) => {
-      el.scrollLeft = startX - me.clientX;
-      el.scrollTop  = startY - me.clientY;
+      const dx = me.clientX - originX;
+      const dy = me.clientY - originY;
+      if (!dragging && Math.sqrt(dx * dx + dy * dy) > 5) {
+        dragging = true;
+        setIsDragging(true);
+        el.setPointerCapture(pointerId);
+      }
+      if (dragging) {
+        el.scrollLeft = startScrollX - dx;
+        el.scrollTop  = startScrollY - dy;
+      }
     };
     const onUp = () => {
-      setIsDragging(false);
+      if (dragging) setIsDragging(false);
       el.removeEventListener("pointermove", onMove);
       el.removeEventListener("pointerup",   onUp);
     };

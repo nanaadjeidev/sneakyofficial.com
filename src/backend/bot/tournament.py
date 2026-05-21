@@ -814,9 +814,12 @@ class TournamentExt(interactions.Extension):
             await ctx.send("No active tournament.", ephemeral=True)
             return
 
-        match = await TournamentManager.get_player_match(t["id"], discord_id=ctx.author_id)
+        match = await TournamentManager.get_player_active_match(t["id"], discord_id=ctx.author_id)
         if not match:
             await ctx.send("You don't have an active match right now.", ephemeral=True)
+            return
+        if match["status"] == "awaiting_confirmation":
+            await ctx.send("Your match result is already reported — waiting for the opposing team to confirm.", ephemeral=True)
             return
 
         player_team_id = match["player_team_id"]

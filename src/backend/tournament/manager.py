@@ -581,6 +581,7 @@ class TournamentManager:
         confirmer_twitch: Optional[str] = None,
     ) -> tuple[bool, str, Optional[int]]:
         """Confirm a pending win report. Returns (ok, message, winner_team_id)."""
+        from backend.util.config import global_config
         async with DBContextManager() as cur:
             await cur.execute(
                 "SELECT reported_winner_id FROM tournament_win_reports WHERE match_id = %s AND status = 'pending'",
@@ -600,25 +601,27 @@ class TournamentManager:
                 return False, "Match not found.", None
             team1_id, team2_id, tournament_id, rnd, match_num = match
 
-            # The confirmer must be on the opposing team
+            # The confirmer must be on the opposing team (admins may bypass)
             opposing_team_id = team2_id if winner_team_id == team1_id else team1_id
 
-            if confirmer_discord:
-                await cur.execute(
-                    """SELECT 1 FROM tournament_team_members ttm
-                       JOIN tournament_signups s ON ttm.signup_id = s.id
-                       WHERE ttm.team_id = %s AND s.discord_id = %s""",
-                    (opposing_team_id, confirmer_discord)
-                )
-            else:
-                await cur.execute(
-                    """SELECT 1 FROM tournament_team_members ttm
-                       JOIN tournament_signups s ON ttm.signup_id = s.id
-                       WHERE ttm.team_id = %s AND LOWER(s.twitch_username) = LOWER(%s)""",
-                    (opposing_team_id, confirmer_twitch)
-                )
-            if not await cur.fetchone():
-                return False, "Only a member of the opposing team can confirm this result.", None
+            is_admin = bool(confirmer_discord and confirmer_discord in global_config.tournament_admin_ids)
+            if not is_admin:
+                if confirmer_discord:
+                    await cur.execute(
+                        """SELECT 1 FROM tournament_team_members ttm
+                           JOIN tournament_signups s ON ttm.signup_id = s.id
+                           WHERE ttm.team_id = %s AND s.discord_id = %s""",
+                        (opposing_team_id, confirmer_discord)
+                    )
+                else:
+                    await cur.execute(
+                        """SELECT 1 FROM tournament_team_members ttm
+                           JOIN tournament_signups s ON ttm.signup_id = s.id
+                           WHERE ttm.team_id = %s AND LOWER(s.twitch_username) = LOWER(%s)""",
+                        (opposing_team_id, confirmer_twitch)
+                    )
+                if not await cur.fetchone():
+                    return False, "Only a member of the opposing team can confirm this result.", None
 
             await cur.execute(
                 """UPDATE tournament_win_reports SET status = 'confirmed', confirmed_by_discord = %s, confirmed_by_twitch = %s
@@ -659,7 +662,8 @@ class TournamentManager:
             "winner_team_id": winner_team_id,
             "winner_name": winner_name,
         })
-        return True, f"✅ Result confirmed! **{winner_name}** wins!", winner_team_id
+        confirmed_by = "Admin override" if is_admin else "Opponent"
+        return True, f"✅ Result confirmed ({confirmed_by})! **{winner_name}** wins!", winner_team_id
 
     @staticmethod
     async def dispute_win(match_id: int) -> tuple[bool, str]:
@@ -971,19 +975,30 @@ class TournamentManager:
             )
             matches_raw = await cur.fetchall()
 
+            # Build lookup (round, match_number) → raw row for feeder ID calculation
+            match_lookup: dict[tuple, dict] = {
+                (m["round"], m["match_number"]): m for m in matches_raw
+            }
+
             rounds: dict[int, list] = {}
             for m in matches_raw:
                 rnd = m["round"]
                 if rnd not in rounds:
                     rounds[rnd] = []
+                mn = m["match_number"]
+                prev = rnd - 1
+                f1 = match_lookup.get((prev, 2 * mn - 1))
+                f2 = match_lookup.get((prev, 2 * mn))
                 rounds[rnd].append({
                     "id": m["id"],
-                    "match_number": m["match_number"],
+                    "match_number": mn,
                     "team1": teams.get(m["team1_id"]) if m["team1_id"] else None,
                     "team2": teams.get(m["team2_id"]) if m["team2_id"] else None,
                     "winner_id": m["winner_id"],
                     "status": m["status"],
-                    "is_bye": m["team2_id"] is None,
+                    "is_bye": m["team2_id"] is None and m["status"] == "complete",
+                    "feeder1_match_id": f1["id"] if f1 else None,
+                    "feeder2_match_id": f2["id"] if f2 else None,
                 })
 
             await cur.execute(

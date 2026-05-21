@@ -173,9 +173,12 @@ class TwitchBot(commands.Bot):
             await ctx.send(f"@{ctx.author.name} No active tournament right now.")
             return
 
-        match = await TournamentManager.get_player_match(tournament["id"], twitch_username=ctx.author.name.lower())
+        match = await TournamentManager.get_player_active_match(tournament["id"], twitch_username=ctx.author.name.lower())
         if not match:
             await ctx.send(f"@{ctx.author.name} You don't have an active match right now.")
+            return
+        if match["status"] == "awaiting_confirmation":
+            await ctx.send(f"@{ctx.author.name} Your match result is already reported — waiting for the opposing team to confirm.")
             return
 
         player_team_id = match["player_team_id"]
@@ -199,9 +202,15 @@ class TwitchBot(commands.Bot):
                     winner_name = row["team_name"] if row else "Unknown"
                     opposing_id = match["team2_id"] if winner_team_id == match["team1_id"] else match["team1_id"]
                     await cur.execute(
-                        """SELECT s.discord_id FROM tournament_team_members ttm
+                        """SELECT COALESCE(s.discord_id, pp.discord_id) AS discord_id
+                           FROM tournament_team_members ttm
                            JOIN tournament_signups s ON s.id = ttm.signup_id
-                           WHERE ttm.team_id = %s AND s.discord_id IS NOT NULL""",
+                           LEFT JOIN player_profiles pp ON (
+                               s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(pp.twitch_username) = LOWER(s.twitch_username)
+                           )
+                           WHERE ttm.team_id = %s
+                           AND (s.discord_id IS NOT NULL OR pp.discord_id IS NOT NULL)""",
                         (opposing_id,)
                     )
                     opposing = await cur.fetchall()
