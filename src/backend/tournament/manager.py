@@ -459,8 +459,15 @@ class TournamentManager:
                 await cur.execute(
                     """SELECT ttm.team_id FROM tournament_team_members ttm
                        JOIN tournament_signups s ON ttm.signup_id = s.id
-                       WHERE s.tournament_id = %s AND s.discord_id = %s""",
-                    (tournament_id, discord_id)
+                       WHERE s.tournament_id = %s AND (
+                           s.discord_id = %s
+                           OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(s.twitch_username) = (
+                                   SELECT LOWER(twitch_username) FROM player_profiles
+                                   WHERE discord_id = %s AND twitch_username IS NOT NULL LIMIT 1
+                               ))
+                       )""",
+                    (tournament_id, discord_id, discord_id)
                 )
             else:
                 await cur.execute(
@@ -504,8 +511,15 @@ class TournamentManager:
                 await cur.execute(
                     """SELECT ttm.team_id FROM tournament_team_members ttm
                        JOIN tournament_signups s ON ttm.signup_id = s.id
-                       WHERE s.tournament_id = %s AND s.discord_id = %s LIMIT 1""",
-                    (tournament_id, discord_id)
+                       WHERE s.tournament_id = %s AND (
+                           s.discord_id = %s
+                           OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(s.twitch_username) = (
+                                   SELECT LOWER(twitch_username) FROM player_profiles
+                                   WHERE discord_id = %s AND twitch_username IS NOT NULL LIMIT 1
+                               ))
+                       ) LIMIT 1""",
+                    (tournament_id, discord_id, discord_id)
                 )
             else:
                 await cur.execute(
