@@ -263,6 +263,8 @@ class ProfileManager:
             )
             if not cur.rowcount:
                 return False, "Player profile not found."
+        from backend.util.role_manager import RoleManager
+        await RoleManager.get().apply_rank_roles(discord_id, rank)
         if rank is None:
             return True, "Rank cleared (Unranked)."
         display = rank_display(rank, tier)
@@ -289,6 +291,8 @@ class ProfileManager:
                 "UPDATE player_profiles SET rank = %s WHERE discord_id = %s",
                 (new_rank, discord_id)
             )
+        from backend.util.role_manager import RoleManager
+        await RoleManager.get().apply_rank_roles(discord_id, new_rank)
         return True, f"Promoted to {RANK_EMOJIS[new_rank]} **{RANKS[new_rank]}**!"
 
     # ------------------------------------------------------------------ #
@@ -495,6 +499,11 @@ class ProfileManager:
             )
             if not cur.rowcount:
                 return False, "Player profile not found."
+            await cur.execute("SELECT discord_id FROM player_profiles WHERE id = %s", (profile_id,))
+            row = await cur.fetchone()
+            discord_id = row[0] if row else None
+        from backend.util.role_manager import RoleManager
+        await RoleManager.get().apply_rank_roles(discord_id, rank)
         if rank is None:
             return True, "Rank cleared (Unranked)."
         return True, f"Rank set to {RANK_EMOJIS[rank]} **{rank_display(rank, tier)}**."

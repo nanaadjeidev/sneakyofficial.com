@@ -304,6 +304,8 @@ class DevTools(interactions.Extension):
     async def assign_channel(self) -> None:
         self.error_log_channel = self.bot.get_channel(
             global_config.error_log_channel)
+        from backend.util.role_manager import RoleManager
+        RoleManager.get().set_bot(self.bot)
 
 
 def setup(bot: interactions.Client) -> None:
