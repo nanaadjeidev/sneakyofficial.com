@@ -931,16 +931,13 @@ export default function Tournament() {
               </div>
             )}
           </div>
-          {!authLoading && !loggedIn && (
+          {!authLoading && !isAdmin && (
             <a
               href={`${API_URL}/api/auth/discord/login`}
               className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1 shrink-0"
             >
               <LogIn className="w-3.5 h-3.5" /> Admin login
             </a>
-          )}
-          {!authLoading && loggedIn && !isAdmin && (
-            <span className="text-xs text-slate-600">{userData?.profileName}</span>
           )}
         </div>
 
