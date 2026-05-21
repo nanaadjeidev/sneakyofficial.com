@@ -279,7 +279,7 @@ class DevTools(interactions.Extension):
         await ctx.send(result_message)
 
     _WELCOME_GUILD   = 1019293451579293747
-    _WELCOME_CHANNEL = 1044027827634319360
+    _WELCOME_CHANNEL = 1019293452451725384
 
     _WELCOME_ROLE    = 1019293451600273538
 
