@@ -866,21 +866,24 @@ class TournamentManager:
 
     @staticmethod
     async def set_team_name(team_id: int, new_name: str, requestor_discord_id: int) -> tuple[bool, str]:
-        """Allow captain (or admin) to rename a team."""
+        """Allow captain (or admin) to rename a team once."""
         async with DBContextManager() as cur:
             await cur.execute(
-                "SELECT captain_discord_id, tournament_id FROM tournament_teams WHERE id = %s",
+                "SELECT captain_discord_id, tournament_id, name_confirmed FROM tournament_teams WHERE id = %s",
                 (team_id,)
             )
             row = await cur.fetchone()
             if not row:
                 return False, "Team not found."
-            captain_id, tournament_id = row
+            captain_id, tournament_id, name_confirmed = row
 
             from backend.util.config import global_config
             is_admin = requestor_discord_id in global_config.tournament_admin_ids
             if not is_admin and captain_id != requestor_discord_id:
                 return False, "Only the team captain or an admin can rename the team."
+
+            if not is_admin and name_confirmed:
+                return False, "Your team has already used its one rename."
 
             await cur.execute(
                 "SELECT id FROM tournament_teams WHERE tournament_id = %s AND LOWER(team_name) = LOWER(%s) AND id != %s",
