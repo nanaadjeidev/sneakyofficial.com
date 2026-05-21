@@ -35,6 +35,26 @@ async def _ensure_is_sub_column(cur) -> None:
         if "Duplicate column name" not in str(e):
             raise
 
+
+async def _ensure_round_games_match_id(cur) -> None:
+    """Add match_id column to tournament_round_games for per-match map storage.
+    0 = round-level (schedule), non-zero = match-specific counterpick."""
+    try:
+        await cur.execute(
+            "ALTER TABLE tournament_round_games ADD COLUMN match_id INT NOT NULL DEFAULT 0 AFTER round"
+        )
+    except Exception as e:
+        if "Duplicate column name" not in str(e):
+            raise
+    # Add the composite unique key if it doesn't already exist
+    try:
+        await cur.execute(
+            "ALTER TABLE tournament_round_games ADD UNIQUE KEY uq_game_per_match (tournament_id, round, match_id, game_number)"
+        )
+    except Exception as e:
+        if "Duplicate key name" not in str(e) and "duplicate key" not in str(e).lower():
+            raise
+
 ADJECTIVES = [
     "Booyah", "Fresh", "Inky", "Radical", "Sneaky", "Fierce", "Elite",
     "Turbo", "Blazing", "Oceanic", "Deadly", "Tactical", "Grizzco", "Anarchy",
@@ -177,13 +197,21 @@ class TournamentManager:
             )
             schedule = await cur.fetchone()
 
+            await _ensure_round_games_match_id(cur)
+            # Fetch both round-level (match_id=0) and match-specific rows; prefer match-specific
             await cur.execute(
-                "SELECT game_number, stage_name FROM tournament_round_games "
-                "WHERE tournament_id = %s AND round = %s ORDER BY game_number",
-                (match["tournament_id"], match["round"])
+                "SELECT game_number, stage_name, match_id FROM tournament_round_games "
+                "WHERE tournament_id = %s AND round = %s AND match_id IN (0, %s) ORDER BY game_number, match_id DESC",
+                (match["tournament_id"], match["round"], match_id)
             )
             game_rows = await cur.fetchall()
-            games = [{"game_number": r["game_number"], "stage_name": r["stage_name"]} for r in game_rows]
+            # For each game_number keep the first row (match-specific wins due to ORDER BY match_id DESC)
+            seen: set[int] = set()
+            games = []
+            for r in game_rows:
+                if r["game_number"] not in seen:
+                    games.append({"game_number": r["game_number"], "stage_name": r["stage_name"]})
+                    seen.add(r["game_number"])
 
             teams = [await TournamentManager._fetch_team(cur, tid) for tid in [match["team1_id"], match["team2_id"]]]
 

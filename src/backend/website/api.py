@@ -548,11 +548,13 @@ class SneakyApi:
             if not row:
                 return web.json_response({"error": "Match not found"}, status=404)
             tournament_id, round_num = row[0], row[1]
+            from ..tournament.manager import _ensure_round_games_match_id
+            await _ensure_round_games_match_id(cur)
             await cur.execute(
-                """INSERT INTO tournament_round_games (tournament_id, round, game_number, stage_name)
-                   VALUES (%s, %s, %s, %s)
+                """INSERT INTO tournament_round_games (tournament_id, round, match_id, game_number, stage_name)
+                   VALUES (%s, %s, %s, %s, %s)
                    ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)""",
-                (tournament_id, round_num, game_number, stage_name)
+                (tournament_id, round_num, match_id, game_number, stage_name)
             )
 
         from ..util.broadcaster import TournamentBroadcaster
