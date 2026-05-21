@@ -789,13 +789,21 @@ class TournamentManager:
             )
 
             saved = 0
+            used_names_this_save: set[str] = set()
+
+            # Pre-validate explicit names for duplicates before any inserts
+            explicit_names = [t.get("name", "").strip().lower() for t in teams_data if t.get("name", "").strip()]
+            if len(explicit_names) != len(set(explicit_names)):
+                return False, "Two or more teams have the same name. Please give each team a unique name."
+
             for i, team in enumerate(teams_data):
                 signup_ids = team.get("signup_ids", [])
                 sub_signup_ids = team.get("sub_signup_ids", [])
                 if not signup_ids and not sub_signup_ids:
                     continue
 
-                team_name = team.get("name") or _generate_team_name(set())
+                team_name = team.get("name") or _generate_team_name(used_names_this_save)
+                used_names_this_save.add(team_name.lower())
                 captain_id = None
 
                 # Use admin-designated captain if provided
@@ -864,11 +872,17 @@ class TournamentManager:
                 return False, "Team not found."
             captain_id, tournament_id = row
 
-            # Check captain or admin
             from backend.util.config import global_config
             is_admin = requestor_discord_id in global_config.tournament_admin_ids
             if not is_admin and captain_id != requestor_discord_id:
                 return False, "Only the team captain or an admin can rename the team."
+
+            await cur.execute(
+                "SELECT id FROM tournament_teams WHERE tournament_id = %s AND LOWER(team_name) = LOWER(%s) AND id != %s",
+                (tournament_id, new_name, team_id)
+            )
+            if await cur.fetchone():
+                return False, f"A team named **{new_name}** already exists in this tournament."
 
             await cur.execute(
                 "UPDATE tournament_teams SET team_name = %s, name_confirmed = TRUE WHERE id = %s",
