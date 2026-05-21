@@ -1334,7 +1334,7 @@ function PlayerProfilesSection() {
                             <div className="flex items-center gap-1">
                               <input
                                 autoFocus
-                                value={discordEdit[p.id] ?? ""}
+                                value={String(discordEdit[p.id] ?? "")}
                                 onChange={(e) => {
                                   const v = e.target.value;
                                   setDiscordEdit((prev) => ({ ...prev, [p.id]: v }));
@@ -1349,7 +1349,7 @@ function PlayerProfilesSection() {
                                 onKeyDown={(e) => {
                                   if (e.key === "Escape") { setDiscordEdit((prev) => ({ ...prev, [p.id]: null })); setDiscordSaveError((prev) => ({ ...prev, [p.id]: "" })); return; }
                                   if (e.key === "Enter") {
-                                    const val = discordInfo[p.id]?.discord_id ?? (discordEdit[p.id]?.trim() ?? "");
+                                    const val = discordInfo[p.id]?.discord_id ?? String(discordEdit[p.id] ?? "").trim();
                                     saveDiscordId(p.id, val);
                                   }
                                 }}
@@ -1359,10 +1359,10 @@ function PlayerProfilesSection() {
                               <button
                                 disabled={discordSaving[p.id] || (
                                   !discordInfo[p.id]?.discord_id &&
-                                  !/^\d{17,20}$/.test(discordEdit[p.id]?.trim() ?? "")
+                                  !/^\d{17,20}$/.test(String(discordEdit[p.id] ?? "").trim())
                                 )}
                                 onClick={() => {
-                                  const val = discordInfo[p.id]?.discord_id ?? (discordEdit[p.id]?.trim() ?? "");
+                                  const val = discordInfo[p.id]?.discord_id ?? String(discordEdit[p.id] ?? "").trim();
                                   saveDiscordId(p.id, val);
                                 }}
                                 className="text-green-400 hover:text-green-300 disabled:opacity-30"
@@ -1409,9 +1409,10 @@ function PlayerProfilesSection() {
                             )}
                             <button
                               onClick={() => {
-                                setDiscordEdit((prev) => ({ ...prev, [p.id]: p.discord_id ?? "" }));
-                                if (p.discord_id && /^\d{17,20}$/.test(p.discord_id)) {
-                                  lookupDiscordUser(p.id, p.discord_id);
+                                const existing = p.discord_id ? String(p.discord_id) : "";
+                                setDiscordEdit((prev) => ({ ...prev, [p.id]: existing }));
+                                if (existing && /^\d{17,20}$/.test(existing)) {
+                                  lookupDiscordUser(p.id, existing);
                                 }
                               }}
                               className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-purple-400 transition-opacity"
