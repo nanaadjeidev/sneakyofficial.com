@@ -2,11 +2,17 @@ import { useState, useRef, useEffect } from "react";
 import { ChevronDown, X } from "lucide-react";
 import { STAGES, MODES, type Stage, type Mode } from "./splatoonData";
 
+export interface GameMap {
+  game_number: number;
+  stage_name: string | null;
+}
+
 export interface RoundMapMode {
   round: number;
   stage: Stage | null;
   mode: Mode | null;
   best_of: number;
+  game_maps: GameMap[];
 }
 
 interface Props {
@@ -23,7 +29,7 @@ function getRoundLabel(round: number, total: number): string {
 
 // ---- Stage picker dropdown -----------------------------------------------
 
-function StagePicker({ value, onChange }: { value: Stage | null; onChange: (s: Stage | null) => void }) {
+function StagePicker({ value, onChange, placeholder }: { value: Stage | null; onChange: (s: Stage | null) => void; placeholder?: string }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -51,7 +57,7 @@ function StagePicker({ value, onChange }: { value: Stage | null; onChange: (s: S
             <span className="text-white truncate flex-1">{value.name}</span>
           </>
         ) : (
-          <span className="text-slate-500 flex-1">Pick stage…</span>
+          <span className="text-slate-500 flex-1">{placeholder ?? "Pick stage…"}</span>
         )}
         {value ? (
           <button
@@ -132,6 +138,21 @@ function ModePicker({ value, onChange }: { value: Mode | null; onChange: (m: Mod
   );
 }
 
+// ---- Helpers ---------------------------------------------------------------
+
+function buildDefaultGameMaps(bestOf: number): GameMap[] {
+  return Array.from({ length: bestOf }, (_, i) => ({ game_number: i + 1, stage_name: null }));
+}
+
+function syncGameMaps(current: GameMap[], bestOf: number): GameMap[] {
+  const result: GameMap[] = [];
+  for (let i = 1; i <= bestOf; i++) {
+    const existing = current.find((g) => g.game_number === i);
+    result.push(existing ?? { game_number: i, stage_name: null });
+  }
+  return result;
+}
+
 // ---- Main component --------------------------------------------------------
 
 const BO_OPTIONS = [1, 3, 5, 7] as const;
@@ -139,16 +160,31 @@ type BestOf = (typeof BO_OPTIONS)[number];
 
 export default function MapModePicker({ rounds, value, onChange }: Props) {
   const update = (round: number, patch: Partial<RoundMapMode>) => {
-    const existing = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const };
+    const existing = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const, game_maps: [] };
     const updated = { ...existing, ...patch };
+    // When best_of changes, resize game_maps
+    if (patch.best_of !== undefined) {
+      updated.game_maps = syncGameMaps(updated.game_maps, patch.best_of);
+    }
     const rest = value.filter((r) => r.round !== round);
     onChange([...rest, updated].sort((a, b) => a.round - b.round));
+  };
+
+  const updateGameMap = (round: number, gameNumber: number, stageName: string | null) => {
+    const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const, game_maps: [] };
+    const gameMaps = entry.game_maps.map((g) =>
+      g.game_number === gameNumber ? { ...g, stage_name: stageName } : g
+    );
+    update(round, { game_maps: gameMaps });
   };
 
   return (
     <div className="flex flex-col gap-3">
       {Array.from({ length: rounds }, (_, i) => i + 1).map((round) => {
-        const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const };
+        const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const, game_maps: [] };
+        const bestOf = entry.best_of ?? 1;
+        const gameMaps = syncGameMaps(entry.game_maps, bestOf);
+
         return (
           <div
             key={round}
@@ -158,7 +194,6 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
               {getRoundLabel(round, rounds)}
             </p>
             <div className="flex flex-col gap-2">
-              <StagePicker value={entry.stage} onChange={(s) => update(round, { stage: s })} />
               <ModePicker value={entry.mode} onChange={(m) => update(round, { mode: m })} />
               {/* Best of selector */}
               <div className="flex items-center gap-2">
@@ -170,7 +205,7 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
                       type="button"
                       onClick={() => update(round, { best_of: bo })}
                       className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
-                        (entry.best_of ?? 1) === bo
+                        bestOf === bo
                           ? "bg-purple-600/30 border-purple-500/60 text-purple-200"
                           : "bg-slate-800/40 border-slate-700/50 text-slate-400 hover:border-slate-500 hover:text-slate-200"
                       }`}
@@ -180,6 +215,25 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
                   ))}
                 </div>
               </div>
+              {/* Per-game stage pickers */}
+              <div className="flex flex-col gap-1.5 mt-0.5">
+                {gameMaps.map((gm) => {
+                  const stageObj = gm.stage_name ? STAGES.find((s) => s.name === gm.stage_name) ?? null : null;
+                  const label = gm.game_number === 1
+                    ? bestOf === 1 ? "Stage" : "Game 1 — Home pick"
+                    : `Game ${gm.game_number} — Counterpick`;
+                  return (
+                    <div key={gm.game_number}>
+                      <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-wide">{label}</p>
+                      <StagePicker
+                        value={stageObj}
+                        placeholder={gm.game_number === 1 ? "Pick stage…" : "? — fill after game"}
+                        onChange={(s) => updateGameMap(round, gm.game_number, s?.name ?? null)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         );
@@ -187,3 +241,5 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
     </div>
   );
 }
+
+export { buildDefaultGameMaps };

@@ -154,6 +154,8 @@ class WebServer:
         self.app.router.add_get(
             "/api/tournament/overlay", self.sneaky_api.serve_overlay_data)
         self.app.router.add_get(
+            "/api/tournament/overlay-upnext", self.sneaky_api.serve_overlay_upnext)
+        self.app.router.add_get(
             "/api/player/{discord_id}", self.sneaky_api.serve_player_profile)
         self.app.router.add_get(
             "/api/leaderboard", self.sneaky_api.serve_leaderboard)

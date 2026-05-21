@@ -1053,16 +1053,23 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
       const { data } = await axios.get(`${API_URL}/api/tournament`, { params: { id: tournamentId } });
       const r: number = data.rounds?.length ?? 0;
       setRounds(r);
-      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string; best_of?: number } }) => ({
-        round: rd.round,
-        stage: rd.schedule?.stage_name
-          ? { name: rd.schedule.stage_name, image: "" }
-          : null,
-        mode: rd.schedule?.mode_id
-          ? { id: rd.schedule.mode_id, name: rd.schedule.mode_name ?? "", icon: "" }
-          : null,
-        best_of: (rd.schedule?.best_of ?? 1) as 1 | 3 | 5 | 7,
-      }));
+      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string; best_of?: number; games?: { game_number: number; stage_name: string | null }[] } }) => {
+        const bestOf = (rd.schedule?.best_of ?? 1) as 1 | 3 | 5 | 7;
+        const rawGames: { game_number: number; stage_name: string | null }[] = rd.schedule?.games ?? [];
+        const game_maps = Array.from({ length: bestOf }, (_, i) => {
+          const existing = rawGames.find((g) => g.game_number === i + 1);
+          return { game_number: i + 1, stage_name: existing?.stage_name ?? null };
+        });
+        return {
+          round: rd.round,
+          stage: null,
+          mode: rd.schedule?.mode_id
+            ? { id: rd.schedule.mode_id, name: rd.schedule.mode_name ?? "", icon: "" }
+            : null,
+          best_of: bestOf,
+          game_maps,
+        };
+      });
       setSchedule(existing);
       setLoaded(true);
     } catch { /* best-effort */ }
@@ -1075,10 +1082,11 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
         tournament_id: tournamentId,
         schedule: schedule.map((r) => ({
           round: r.round,
-          stage_name: r.stage?.name ?? null,
+          stage_name: r.game_maps?.[0]?.stage_name ?? null,
           mode_id: r.mode?.id ?? null,
           mode_name: r.mode?.name ?? null,
           best_of: r.best_of ?? 1,
+          game_maps: (r.game_maps ?? []).map((g) => ({ game_number: g.game_number, stage_name: g.stage_name })),
         })),
       };
       const { data } = await axios.post(`${API_URL}/api/tournament/admin/schedule`, payload, { withCredentials: true });

@@ -458,6 +458,7 @@ class SneakyApi:
             return web.json_response({"error": "Invalid body"}, status=400)
 
         async with DBContextManager() as cur:
+            await cur.execute("DELETE FROM tournament_round_games WHERE tournament_id = %s", (tournament_id,))
             for entry in schedule:
                 await cur.execute(
                     """INSERT INTO tournament_round_schedule (tournament_id, round, stage_name, mode_id, mode_name, best_of)
@@ -466,6 +467,16 @@ class SneakyApi:
                                                mode_name = VALUES(mode_name), best_of = VALUES(best_of)""",
                     (tournament_id, entry.get("round"), entry.get("stage_name"), entry.get("mode_id"), entry.get("mode_name"), entry.get("best_of", 1))
                 )
+                for gm in entry.get("game_maps", []):
+                    game_num = gm.get("game_number")
+                    stage = gm.get("stage_name")
+                    if game_num:
+                        await cur.execute(
+                            """INSERT INTO tournament_round_games (tournament_id, round, game_number, stage_name)
+                               VALUES (%s, %s, %s, %s)
+                               ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)""",
+                            (tournament_id, entry.get("round"), game_num, stage)
+                        )
         return web.json_response({"ok": True, "message": "Schedule saved."})
 
     @verify_tournament_admin
@@ -514,6 +525,18 @@ class SneakyApi:
             return web.json_response({"match": data})
         except Exception as e:
             logger.exception("Overlay data error: %s", e)
+            return web.json_response({"error": "Server error"}, status=500)
+
+    async def serve_overlay_upnext(self, request: Request) -> web.Response:
+        """Return the next pending (unpinned) match for the 'up next' overlay."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"match": None})
+        try:
+            data = await TournamentManager.get_next_pending_match_data(int(guild_id_param))
+            return web.json_response({"match": data})
+        except Exception as e:
+            logger.exception("Overlay upnext error: %s", e)
             return web.json_response({"error": "Server error"}, status=500)
 
     async def serve_tournament_list(self, request: Request) -> web.Response:

@@ -216,3 +216,14 @@ CREATE TABLE IF NOT EXISTS tournament_round_schedule (
   FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
 -- Migration for existing installs: ALTER TABLE tournament_round_schedule ADD COLUMN IF NOT EXISTS best_of TINYINT NOT NULL DEFAULT 1;
+
+CREATE TABLE IF NOT EXISTS tournament_round_games (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  tournament_id INT NOT NULL,
+  round INT NOT NULL,
+  game_number INT NOT NULL,
+  stage_name VARCHAR(100),
+  UNIQUE KEY uq_game (tournament_id, round, game_number),
+  FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
+);
+-- Migration for existing installs: (run the CREATE TABLE above)

@@ -16,6 +16,11 @@ interface Team {
   members: string[];
 }
 
+interface GameMap {
+  game_number: number;
+  stage_name: string | null;
+}
+
 interface OverlayMatchData {
   match_id: number;
   round: number;
@@ -29,6 +34,7 @@ interface OverlayMatchData {
   best_of: number;
   stage_name: string | null;
   mode_name: string | null;
+  games: GameMap[];
 }
 
 function getRoundLabel(round: number, total: number): string {
@@ -143,10 +149,17 @@ export default function OverlayMatch() {
     );
   }
 
-  const modeData = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
-  const stageData = match.stage_name ? STAGES.find((s) => s.name === match.stage_name) : null;
-  const roundLabel = getRoundLabel(match.round, match.total_rounds);
   const bestOf = match.best_of ?? 1;
+  const currentGameNum = match.team1_games + match.team2_games + 1;
+  const games = match.games ?? [];
+  const currentGameMap = games.find((g) => g.game_number === currentGameNum);
+  // stage_name from server already reflects current game; fall back to games lookup
+  const currentStageName = match.stage_name ?? currentGameMap?.stage_name ?? null;
+  const isCounterpickPending = games.length > 0 && currentGameNum > 1 && currentGameMap?.stage_name == null;
+
+  const modeData = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
+  const stageData = currentStageName ? STAGES.find((s) => s.name === currentStageName) : null;
+  const roundLabel = getRoundLabel(match.round, match.total_rounds);
 
   return (
     <div data-overlay className="p-4 min-h-screen">
@@ -185,10 +198,12 @@ export default function OverlayMatch() {
                 </div>
               </>
             )}
-            {match.stage_name && (
+            {(currentStageName || isCounterpickPending) && (
               <>
                 <span className="text-white/20">·</span>
-                <span className="text-[10px] font-bold tracking-[0.15em] text-white/40 uppercase">{match.stage_name}</span>
+                <span className="text-[10px] font-bold tracking-[0.15em] text-white/40 uppercase">
+                  {currentStageName ?? "?"}
+                </span>
               </>
             )}
           </div>
