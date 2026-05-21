@@ -19,6 +19,38 @@ logger = logging.getLogger("Tournament")
 
 BRACKET_URL = f"{global_config.website_url}/tournament"
 
+
+async def post_match_confirmation_embed(
+    bot: interactions.Client,
+    match_id: int,
+    winner_team_id: int,
+    winner_name: str,
+    opposing_discord_ids: list[int],
+) -> None:
+    """Post a confirm/dispute embed to the configured results channel."""
+    channel_id = global_config.tournament_results_channel
+    if not channel_id:
+        logger.warning("TOURNAMENT_RESULTS_CHANNEL not set — skipping confirmation embed")
+        return
+    try:
+        channel = await bot.fetch_channel(channel_id)
+        mentions = " ".join(f"<@{uid}>" for uid in opposing_discord_ids) if opposing_discord_ids else "(opposing team)"
+        embed = _embed(
+            "⚔️ Match Result Reported",
+            f"**{winner_name}** has been reported as the winner.\n\nOpposing team must confirm or dispute below.",
+            0xf39c12,
+        )
+        embed.set_footer(text=f"Match ID: {match_id}")
+        confirm_btn = Button(style=ButtonStyle.GREEN, label="Confirm Win", custom_id=f"tourney_confirm_{match_id}_{winner_team_id}")
+        dispute_btn = Button(style=ButtonStyle.RED, label="Dispute", custom_id=f"tourney_dispute_{match_id}_{winner_team_id}")
+        await channel.send(
+            content=f"📣 {mentions} — please confirm or dispute:",
+            embed=embed,
+            components=[ActionRow(confirm_btn, dispute_btn)],
+        )
+    except Exception:
+        logger.exception("Failed to post match confirmation embed for match %s", match_id)
+
 _BOT_ADJECTIVES = ["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
                    "Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
                    "Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
@@ -817,24 +849,9 @@ class TournamentExt(interactions.Extension):
             )
             opposing_members = await cur.fetchall()
 
-        mentions = " ".join(f"<@{m['discord_id']}>" for m in opposing_members) if opposing_members else "(Twitch players — confirm with `/tournament confirm`)"
-
-        embed = _embed(
-            "⚔️ Match Result Reported",
-            f"**{winner_name}** has been reported as the winner.\n\nA member of the opposing team must confirm or dispute this result.",
-            0xf39c12,
-        )
-        embed.set_footer(text=f"Match ID: {match_id}")
-
-        confirm_btn = Button(style=ButtonStyle.GREEN, label="Confirm Win", custom_id=f"tourney_confirm_{match_id}_{winner_team_id}")
-        dispute_btn = Button(style=ButtonStyle.RED, label="Dispute", custom_id=f"tourney_dispute_{match_id}_{winner_team_id}")
-
-        await ctx.channel.send(
-            content=f"📣 {mentions} — please confirm or dispute the result below:",
-            embed=embed,
-            components=[ActionRow(confirm_btn, dispute_btn)],
-        )
-        await ctx.send("Result reported! Check the channel message.", ephemeral=True)
+        opposing_ids = [m["discord_id"] for m in opposing_members]
+        await post_match_confirmation_embed(self.bot, match_id, winner_team_id, winner_name, opposing_ids)
+        await ctx.send("Result reported! Check the results channel.", ephemeral=True)
 
     @tournament.subcommand(sub_cmd_name="confirm", sub_cmd_description="Manually confirm a match result by match ID")
     @slash_option(name="match_id", description="Match ID (shown on the report message)", required=True, opt_type=OptionType.INTEGER)

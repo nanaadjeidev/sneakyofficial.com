@@ -35,12 +35,13 @@ _RANK_NAMES = {
 
 class TwitchBot(commands.Bot):
 
-    def __init__(self) -> None:
+    def __init__(self, discord_bot=None) -> None:
         super().__init__(
             token=global_config.twitch_bot_token,
             prefix="!",
             initial_channels=[global_config.twitch_channel] if global_config.twitch_channel else [],
         )
+        self._discord_bot = discord_bot
         self._pending_match_id: Optional[int] = None
         self._pending_winner_team_id: Optional[int] = None
         self._pending_splattags: dict[str, str] = {}
@@ -189,7 +190,26 @@ class TwitchBot(commands.Bot):
         )
         if ok:
             self.set_pending_confirmation(match["id"], winner_team_id)
-        await ctx.send(f"@{ctx.author.name} {msg} Opposing team: use !confirm or !dispute in chat.")
+            if self._discord_bot:
+                from backend.bot.tournament import post_match_confirmation_embed
+                from backend.util.database_context_manager import DBContextManager
+                async with DBContextManager(use_dict=True) as cur:
+                    await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (winner_team_id,))
+                    row = await cur.fetchone()
+                    winner_name = row["team_name"] if row else "Unknown"
+                    opposing_id = match["team2_id"] if winner_team_id == match["team1_id"] else match["team1_id"]
+                    await cur.execute(
+                        """SELECT s.discord_id FROM tournament_team_members ttm
+                           JOIN tournament_signups s ON s.id = ttm.signup_id
+                           WHERE ttm.team_id = %s AND s.discord_id IS NOT NULL""",
+                        (opposing_id,)
+                    )
+                    opposing = await cur.fetchall()
+                await post_match_confirmation_embed(
+                    self._discord_bot, match["id"], winner_team_id, winner_name,
+                    [m["discord_id"] for m in opposing]
+                )
+        await ctx.send(f"@{ctx.author.name} {msg} Check Discord for the confirmation embed.")
 
     @commands.command(name="confirm")
     async def cmd_confirm(self, ctx: commands.Context) -> None:

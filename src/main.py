@@ -79,7 +79,7 @@ async def run_services() -> None:
     ]
 
     if global_config.twitch_bot_token and global_config.twitch_channel:
-        twitch_bot = TwitchBot()
+        twitch_bot = TwitchBot(discord_bot=bot)
         logger.info("Starting Twitch bot for channel: %s", global_config.twitch_channel)
         services.append(twitch_bot.start())
     else:

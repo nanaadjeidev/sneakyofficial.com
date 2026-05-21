@@ -533,6 +533,23 @@ class SneakyApi:
             winner_team_id=winner_team_id,
             reporter_discord=int(discord_id),
         )
+        if ok:
+            from ..bot.tournament import post_match_confirmation_embed
+            from ..util.database_context_manager import DBContextManager as _DB
+            async with _DB(use_dict=True) as cur:
+                await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (winner_team_id,))
+                row = await cur.fetchone()
+                winner_name = row["team_name"] if row else "Unknown"
+                opposing_id = match["team2_id"] if winner_team_id == match["team1_id"] else match["team1_id"]
+                await cur.execute(
+                    """SELECT s.discord_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON s.id = ttm.signup_id
+                       WHERE ttm.team_id = %s AND s.discord_id IS NOT NULL""",
+                    (opposing_id,)
+                )
+                opposing = await cur.fetchall()
+            opposing_ids = [m["discord_id"] for m in opposing]
+            await post_match_confirmation_embed(self.splatdle.bot, match["id"], winner_team_id, winner_name, opposing_ids)
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_access_token
