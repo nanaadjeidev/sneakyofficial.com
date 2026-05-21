@@ -108,6 +108,31 @@ class TournamentManager:
         return cls._game_scores.get(match_id, [0, 0])
 
     @staticmethod
+    @staticmethod
+    async def _fetch_team(cur, team_id: int) -> dict:
+        await cur.execute("SELECT team_name, captain_discord_id, tournament_id FROM tournament_teams WHERE id = %s", (team_id,))
+        team_row = await cur.fetchone()
+        await cur.execute(
+            """SELECT s.display_name FROM tournament_team_members ttm
+               JOIN tournament_signups s ON s.id = ttm.signup_id
+               WHERE ttm.team_id = %s ORDER BY s.signed_up_at""",
+            (team_id,)
+        )
+        members = [r["display_name"] for r in await cur.fetchall()]
+        captain = None
+        if team_row and team_row["captain_discord_id"]:
+            await cur.execute(
+                "SELECT display_name FROM tournament_signups WHERE discord_id = %s AND tournament_id = %s LIMIT 1",
+                (team_row["captain_discord_id"], team_row["tournament_id"])
+            )
+            cap_row = await cur.fetchone()
+            if cap_row:
+                captain = cap_row["display_name"]
+        if not captain and members:
+            captain = members[0]
+        return {"id": team_id, "name": team_row["team_name"] if team_row else "Unknown", "members": members, "captain": captain}
+
+    @staticmethod
     async def get_pinned_match_data(guild_id: int) -> dict | None:
         """Return full overlay data for the currently pinned match."""
         match_id = TournamentManager.get_pinned_match_id(guild_id)
@@ -142,18 +167,7 @@ class TournamentManager:
             game_rows = await cur.fetchall()
             games = [{"game_number": r["game_number"], "stage_name": r["stage_name"]} for r in game_rows]
 
-            teams = []
-            for team_id in [match["team1_id"], match["team2_id"]]:
-                await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (team_id,))
-                team_row = await cur.fetchone()
-                await cur.execute(
-                    """SELECT s.display_name FROM tournament_team_members ttm
-                       JOIN tournament_signups s ON s.id = ttm.signup_id
-                       WHERE ttm.team_id = %s""",
-                    (team_id,)
-                )
-                members = [r["display_name"] for r in await cur.fetchall()]
-                teams.append({"id": team_id, "name": team_row["team_name"] if team_row else "Unknown", "members": members})
+            teams = [await TournamentManager._fetch_team(cur, tid) for tid in [match["team1_id"], match["team2_id"]]]
 
         scores = TournamentManager.get_game_score(match_id)
         best_of = schedule["best_of"] if schedule and schedule.get("best_of") else 1
@@ -222,18 +236,7 @@ class TournamentManager:
             game_rows = await cur.fetchall()
             games = [{"game_number": r["game_number"], "stage_name": r["stage_name"]} for r in game_rows]
 
-            teams = []
-            for team_id in [match["team1_id"], match["team2_id"]]:
-                await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (team_id,))
-                team_row = await cur.fetchone()
-                await cur.execute(
-                    """SELECT s.display_name FROM tournament_team_members ttm
-                       JOIN tournament_signups s ON s.id = ttm.signup_id
-                       WHERE ttm.team_id = %s""",
-                    (team_id,)
-                )
-                members = [r["display_name"] for r in await cur.fetchall()]
-                teams.append({"id": team_id, "name": team_row["team_name"] if team_row else "Unknown", "members": members})
+            teams = [await TournamentManager._fetch_team(cur, tid) for tid in [match["team1_id"], match["team2_id"]]]
 
         game1_stage = next((g["stage_name"] for g in games if g["game_number"] == 1), None)
         return {
@@ -1153,8 +1156,11 @@ class TournamentManager:
                 return {}
 
             await cur.execute(
-                """SELECT tt.id, tt.team_name, tt.seed,
-                          GROUP_CONCAT(s.display_name ORDER BY s.signed_up_at SEPARATOR '||') AS members
+                """SELECT tt.id, tt.team_name, tt.seed, tt.captain_discord_id,
+                          GROUP_CONCAT(s.display_name ORDER BY s.signed_up_at SEPARATOR '||') AS members,
+                          (SELECT s2.display_name FROM tournament_signups s2
+                           WHERE s2.tournament_id = tt.tournament_id
+                             AND s2.discord_id = tt.captain_discord_id LIMIT 1) AS captain_name
                    FROM tournament_teams tt
                    JOIN tournament_team_members ttm ON ttm.team_id = tt.id
                    JOIN tournament_signups s ON s.id = ttm.signup_id
@@ -1163,15 +1169,11 @@ class TournamentManager:
                 (tournament_id,)
             )
             teams_raw = await cur.fetchall()
-            teams = {
-                row["id"]: {
-                    "id": row["id"],
-                    "name": row["team_name"],
-                    "seed": row["seed"],
-                    "members": row["members"].split("||") if row["members"] else [],
-                }
-                for row in teams_raw
-            }
+            def _team_row(row: dict) -> dict:
+                members = row["members"].split("||") if row["members"] else []
+                captain = row["captain_name"] or (members[0] if members else None)
+                return {"id": row["id"], "name": row["team_name"], "seed": row["seed"], "members": members, "captain": captain}
+            teams = {row["id"]: _team_row(row) for row in teams_raw}
 
             await cur.execute(
                 """SELECT id, round, match_number, team1_id, team2_id, winner_id, status

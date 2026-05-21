@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import axios from "axios";
 import { MODES, STAGES } from "../../components/tournament/splatoonData";
 
@@ -267,6 +267,73 @@ export default function OverlayMatch() {
 
           {/* Bottom accent */}
           <div className="mt-4 h-0.5 rounded-full bg-gradient-to-r from-transparent via-white/15 to-transparent" />
+        </div>
+      </div>
+      <MatchTicker pinnedId={match.match_id} />
+    </div>
+  );
+}
+
+// ─── Live ticker ─────────────────────────────────────────────────────────────
+
+interface TickerMatch { id: number; round: number; team1: string; team2: string; status: string; winner?: string | null }
+
+function MatchTicker({ pinnedId }: { pinnedId: number }) {
+  const [items, setItems] = useState<TickerMatch[]>([]);
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  const fetchItems = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament`, { params: { guild_id: GUILD_ID } });
+      const all: TickerMatch[] = (data.rounds ?? []).flatMap((r: { round: number; matches: { id: number; team1?: { name: string } | null; team2?: { name: string } | null; status: string; winner_id?: number | null }[] }) =>
+        r.matches
+          .filter((m) => m.id !== pinnedId && m.team1 && m.team2 && !( !m.team1 && !m.team2))
+          .map((m) => ({
+            id: m.id,
+            round: r.round,
+            team1: m.team1?.name ?? "TBD",
+            team2: m.team2?.name ?? "TBD",
+            status: m.status,
+            winner: m.winner_id === null ? null : (m.winner_id === (m.team1 as { id?: number } | null)?.id ? m.team1?.name : m.team2?.name),
+          }))
+      );
+      setItems(all);
+    } catch { /* ignore */ }
+  }, [pinnedId]);
+
+  useEffect(() => { fetchItems(); const id = setInterval(fetchItems, 20_000); return () => clearInterval(id); }, [fetchItems]);
+
+  useEffect(() => {
+    if (items.length < 2) return;
+    const t = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => { setIdx((i) => (i + 1) % items.length); setVisible(true); }, 350);
+    }, 4000);
+    return () => clearInterval(t);
+  }, [items.length]);
+
+  if (items.length === 0) return null;
+  const item = items[idx];
+
+  return (
+    <div className="mt-2 px-1">
+      <div className="rounded-xl overflow-hidden px-4 py-2 flex items-center gap-3"
+        style={{ background: "rgba(10,10,20,0.70)", border: "1px solid rgba(255,255,255,0.07)", backdropFilter: "blur(16px)" }}>
+        <span className="text-[9px] font-black tracking-[0.3em] text-white/25 uppercase shrink-0">Other</span>
+        <div className="h-3 w-px bg-white/10 shrink-0" />
+        <div className="flex-1 flex items-center gap-2 overflow-hidden transition-all duration-300" style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(4px)" }}>
+          <span className="text-[9px] text-white/35 uppercase tracking-wide shrink-0">R{item.round}</span>
+          <span className={`text-[11px] font-semibold truncate ${item.status === "complete" && item.winner === item.team1 ? "text-emerald-300" : "text-white/70"}`}>{item.team1}</span>
+          <span className="text-[9px] text-white/20 shrink-0">vs</span>
+          <span className={`text-[11px] font-semibold truncate ${item.status === "complete" && item.winner === item.team2 ? "text-emerald-300" : "text-white/70"}`}>{item.team2}</span>
+          {item.status === "complete" && item.winner && (
+            <span className="text-[9px] text-emerald-400/60 shrink-0 ml-1">· {item.winner} wins</span>
+          )}
+          {item.status === "pending" && <span className="text-[9px] text-white/20 shrink-0">· upcoming</span>}
+        </div>
+        <div className="flex gap-0.5 shrink-0">
+          {items.map((_, i) => <div key={i} className={`rounded-full transition-all ${i === idx ? "w-2 h-1.5 bg-purple-400" : "w-1.5 h-1.5 bg-white/10"}`} />)}
         </div>
       </div>
     </div>
