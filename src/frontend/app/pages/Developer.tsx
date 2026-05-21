@@ -46,7 +46,7 @@ const PERSONAL_PROJECTS = [
   { title: "Pet-Ascension", repo: "Pet-Ascension", description: "A spiritual-themed browser game. Express.js, plain JS/HTML/CSS, no frameworks. Top mark of the year for a first-year university project." },
   { title: "You're Fat Stop That", repo: "youre-fat-stop-that", description: "A blunt weight tracker with a sarcastic edge. Built with Express.js and vanilla HTML/CSS/JS. First-class grade." },
   { title: "CPP Snake", repo: "CPP-Snake", description: "Terminal Snake game in C++, built ahead of placement to learn the language. Covers game loops, input handling, and ASCII rendering." },
-  { title: "University Work", repo: "university-work", description: "Public archive of university problem sets — Haskell, SQL, and logic-based challenges across three years of the degree." },
+  { title: "University Work", repo: "university-work", description: "Public archive of university problem sets - Haskell, SQL, and logic-based challenges across three years of the degree." },
 ];
 
 const Developer = () => (

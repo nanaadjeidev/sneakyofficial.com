@@ -89,7 +89,7 @@ export default function Leaderboard() {
   return (
     <PageWrapper>
       <Helmet>
-        <title>Leaderboard — sneakyofficial.com</title>
+        <title>Leaderboard | sneakyofficial.com</title>
       </Helmet>
 
       <div className="max-w-4xl mx-auto px-4 py-8">
@@ -151,10 +151,10 @@ export default function Leaderboard() {
                   const totalWins = p.tournament_wins + (p.special_tournament_wins ?? 0);
                   const trophyDisplay =
                     sort === "special_wins"
-                      ? p.special_tournament_wins > 0 ? <span className="text-amber-300 font-medium">{p.special_tournament_wins} 🌟</span> : <span className="text-slate-700">—</span>
+                      ? p.special_tournament_wins > 0 ? <span className="text-amber-300 font-medium">{p.special_tournament_wins} 🌟</span> : <span className="text-slate-700">-</span>
                       : sort === "total_wins"
-                      ? totalWins > 0 ? <span className="text-yellow-400 font-medium">{totalWins} 🏆</span> : <span className="text-slate-700">—</span>
-                      : p.tournament_wins > 0 ? <span className="text-yellow-400 font-medium">{p.tournament_wins} 🏆</span> : <span className="text-slate-700">—</span>;
+                      ? totalWins > 0 ? <span className="text-yellow-400 font-medium">{totalWins} 🏆</span> : <span className="text-slate-700">-</span>
+                      : p.tournament_wins > 0 ? <span className="text-yellow-400 font-medium">{p.tournament_wins} 🏆</span> : <span className="text-slate-700">-</span>;
 
                   return (
                   <tr

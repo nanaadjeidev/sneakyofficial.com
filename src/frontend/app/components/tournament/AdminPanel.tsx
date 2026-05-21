@@ -431,7 +431,7 @@ export default function AdminPanel({
         <div className="flex items-center gap-2 flex-wrap">
           <Trophy className="w-5 h-5 text-yellow-400" />
           <span className="font-bold text-yellow-300 text-sm">Admin Panel</span>
-          <span className="text-slate-400 text-xs">— {tournament.name}</span>
+          <span className="text-slate-400 text-xs">- {tournament.name}</span>
           {tournament.special_rules && (
             <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
               tournament.affects_rating === false
@@ -501,7 +501,7 @@ export default function AdminPanel({
           <textarea
             className="w-full bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400 resize-none"
             rows={2}
-            placeholder="Special rules (optional) — e.g. no chargers, specific weapon restrictions…"
+            placeholder="Special rules (optional) - e.g. no chargers, specific weapon restrictions..."
             value={newSpecialRules}
             onChange={(e) => setNewSpecialRules(e.target.value)}
           />
@@ -569,7 +569,7 @@ export default function AdminPanel({
                 }
               }}
             >
-              <p className="text-xs text-slate-500 mb-2">{unassigned.length} unassigned player(s) — drag into a team</p>
+              <p className="text-xs text-slate-500 mb-2">{unassigned.length} unassigned player(s) - drag into a team</p>
               <div className="flex flex-wrap gap-1.5">
                 {unassigned.map((sid) => {
                   const s = signupsById.get(sid);

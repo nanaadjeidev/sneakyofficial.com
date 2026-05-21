@@ -80,7 +80,7 @@ export default function Players() {
   return (
     <PageWrapper>
       <Helmet>
-        <title>Players — sneakyofficial.com</title>
+        <title>Players | sneakyofficial.com</title>
       </Helmet>
       <div className="max-w-5xl mx-auto px-4 py-8">
         <div className="flex items-center gap-3 mb-6">
@@ -128,7 +128,7 @@ export default function Players() {
                     {players.map((p) => (
                       <tr key={p.discord_id} className="border-b border-slate-800/50 hover:bg-slate-800/20 last:border-b-0 transition-colors">
                         <td className="px-4 py-3">
-                          <div className="font-medium text-white">{p.display_name || "—"}</div>
+                          <div className="font-medium text-white">{p.display_name || "-"}</div>
                           {p.splattag && <div className="text-slate-500 text-xs">{p.splattag}</div>}
                           <div className="font-mono text-slate-700 text-[10px] select-all">{p.discord_id}</div>
                         </td>

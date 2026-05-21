@@ -49,9 +49,9 @@ const SOCIAL_PLATFORMS: SocialPlatform[] = [
 ];
 
 const FEATURED_VIDEOS: FeaturedVideo[] = [
-  { id: "gr3sLTnwK00", title: "Promised Neverland Analysis — Episode 1", channel: "Guy On Nightmode" },
-  { id: "TX9AdMWifEA", title: "Promised Neverland Analysis — Episode 2", channel: "Guy On Nightmode" },
-  { id: "Q3e07ghcepw", title: "Promised Neverland Analysis — Episode 3", channel: "Guy On Nightmode" },
+  { id: "gr3sLTnwK00", title: "Promised Neverland Analysis - Episode 1", channel: "Guy On Nightmode" },
+  { id: "TX9AdMWifEA", title: "Promised Neverland Analysis - Episode 2", channel: "Guy On Nightmode" },
+  { id: "Q3e07ghcepw", title: "Promised Neverland Analysis - Episode 3", channel: "Guy On Nightmode" },
 ];
 
 const Entertainer = () => {

@@ -120,7 +120,7 @@ const HomePage = () => {
             <p className="break-words">
               I'm a final-year Software Engineering student at the University of Portsmouth (graduating 2026),
               returning from a year-long industry placement at Marine AI. There I worked in C++ and Python on
-              autonomous maritime systems — production code interfacing with real hardware, sensor pipelines,
+              autonomous maritime systems - production code interfacing with real hardware, sensor pipelines,
               and infrastructure deployed with Docker and Kubernetes.
             </p>
             <p className="break-words">
@@ -130,7 +130,7 @@ const HomePage = () => {
               TypeScript, React, Python, Node.js, MySQL, and containerised deployments.
             </p>
             <p className="break-words">
-              Outside of engineering, I produce hip-hop — my debut EP <em>Prophecy</em> is out on SoundCloud
+              Outside of engineering, I produce hip-hop - my debut EP <em>Prophecy</em> is out on SoundCloud
               and Spotify. I also run an anime analysis channel on YouTube and create Splatoon content.
             </p>
             <p className="break-words">

@@ -909,7 +909,7 @@ export default function Tournament() {
   return (
     <PageWrapper>
       <Helmet>
-        <title>Tournament — sneakyofficial.com</title>
+        <title>Tournament | sneakyofficial.com</title>
       </Helmet>
 
       <div className="max-w-[1600px] mx-auto px-4 py-8">
