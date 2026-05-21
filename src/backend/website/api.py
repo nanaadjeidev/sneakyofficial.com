@@ -453,19 +453,68 @@ class SneakyApi:
         try:
             body = await request.json()
             tournament_id = int(body["tournament_id"])
-            schedule = body["schedule"]  # [{"round": int, "stage_name": str, "mode_id": str, "mode_name": str}]
+            schedule = body["schedule"]  # [{"round": int, "stage_name": str, "mode_id": str, "mode_name": str, "best_of": int}]
         except (KeyError, ValueError):
             return web.json_response({"error": "Invalid body"}, status=400)
 
         async with DBContextManager() as cur:
             for entry in schedule:
                 await cur.execute(
-                    """INSERT INTO tournament_round_schedule (tournament_id, round, stage_name, mode_id, mode_name)
-                       VALUES (%s, %s, %s, %s, %s)
-                       ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name), mode_id = VALUES(mode_id), mode_name = VALUES(mode_name)""",
-                    (tournament_id, entry.get("round"), entry.get("stage_name"), entry.get("mode_id"), entry.get("mode_name"))
+                    """INSERT INTO tournament_round_schedule (tournament_id, round, stage_name, mode_id, mode_name, best_of)
+                       VALUES (%s, %s, %s, %s, %s, %s)
+                       ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name), mode_id = VALUES(mode_id),
+                                               mode_name = VALUES(mode_name), best_of = VALUES(best_of)""",
+                    (tournament_id, entry.get("round"), entry.get("stage_name"), entry.get("mode_id"), entry.get("mode_name"), entry.get("best_of", 1))
                 )
         return web.json_response({"ok": True, "message": "Schedule saved."})
+
+    @verify_tournament_admin
+    async def tournament_admin_pin_match(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            guild_id = int(body["guild_id"])
+            match_id = body.get("match_id")
+            if match_id is not None:
+                match_id = int(match_id)
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        TournamentManager.pin_match(guild_id, match_id)
+        from ..util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({"event": "match_pinned", "match_id": match_id})
+        return web.json_response({"ok": True})
+
+    @verify_tournament_admin
+    async def tournament_admin_game_score(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            team1_games = int(body["team1_games"])
+            team2_games = int(body["team2_games"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        TournamentManager.set_game_score(match_id, team1_games, team2_games)
+        from ..util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "game_score",
+            "match_id": match_id,
+            "team1_games": team1_games,
+            "team2_games": team2_games,
+        })
+        return web.json_response({"ok": True})
+
+    async def serve_overlay_data(self, request: Request) -> web.Response:
+        """Return pinned match overlay data for the stream overlay."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"match": None})
+        try:
+            data = await TournamentManager.get_pinned_match_data(int(guild_id_param))
+            return web.json_response({"match": data})
+        except Exception as e:
+            logger.exception("Overlay data error: %s", e)
+            return web.json_response({"error": "Server error"}, status=500)
 
     async def serve_tournament_list(self, request: Request) -> web.Response:
         """Return all completed tournaments for a guild (public)."""

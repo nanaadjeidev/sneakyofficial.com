@@ -6,6 +6,7 @@ export interface RoundMapMode {
   round: number;
   stage: Stage | null;
   mode: Mode | null;
+  best_of: number;
 }
 
 interface Props {
@@ -133,9 +134,12 @@ function ModePicker({ value, onChange }: { value: Mode | null; onChange: (m: Mod
 
 // ---- Main component --------------------------------------------------------
 
+const BO_OPTIONS = [1, 3, 5, 7] as const;
+type BestOf = (typeof BO_OPTIONS)[number];
+
 export default function MapModePicker({ rounds, value, onChange }: Props) {
   const update = (round: number, patch: Partial<RoundMapMode>) => {
-    const existing = value.find((r) => r.round === round) ?? { round, stage: null, mode: null };
+    const existing = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const };
     const updated = { ...existing, ...patch };
     const rest = value.filter((r) => r.round !== round);
     onChange([...rest, updated].sort((a, b) => a.round - b.round));
@@ -144,7 +148,7 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
   return (
     <div className="flex flex-col gap-3">
       {Array.from({ length: rounds }, (_, i) => i + 1).map((round) => {
-        const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null };
+        const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const };
         return (
           <div
             key={round}
@@ -156,6 +160,26 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
             <div className="flex flex-col gap-2">
               <StagePicker value={entry.stage} onChange={(s) => update(round, { stage: s })} />
               <ModePicker value={entry.mode} onChange={(m) => update(round, { mode: m })} />
+              {/* Best of selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-500 shrink-0">Best of</span>
+                <div className="flex gap-1">
+                  {BO_OPTIONS.map((bo: BestOf) => (
+                    <button
+                      key={bo}
+                      type="button"
+                      onClick={() => update(round, { best_of: bo })}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all ${
+                        (entry.best_of ?? 1) === bo
+                          ? "bg-purple-600/30 border-purple-500/60 text-purple-200"
+                          : "bg-slate-800/40 border-slate-700/50 text-slate-400 hover:border-slate-500 hover:text-slate-200"
+                      }`}
+                    >
+                      {bo}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         );

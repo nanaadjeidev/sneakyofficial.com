@@ -10,6 +10,9 @@ import DevPortfolio from "./pages/DevPortfolio";
 import Tournament from "./pages/Tournament";
 import Leaderboard from "./pages/Leaderboard";
 import Players from "./pages/Players";
+import OverlayMatch from "./pages/overlay/OverlayMatch";
+import OverlayBracket from "./pages/overlay/OverlayBracket";
+import OverlayLeaderboard from "./pages/overlay/OverlayLeaderboard";
 
 function App() {
   return (
@@ -26,6 +29,9 @@ function App() {
       <Route path="/tournament" element={<Tournament />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/players" element={<Players />} />
+      <Route path="/overlay/match" element={<OverlayMatch />} />
+      <Route path="/overlay/bracket" element={<OverlayBracket />} />
+      <Route path="/overlay/leaderboard" element={<OverlayLeaderboard />} />
     </Routes>
   );
 }

@@ -12,6 +12,15 @@ html, body, #root {
   font-family: 'Inter', sans-serif;
 }
 
+/* Overlay pages use transparent backgrounds for OBS browser source */
+body:has([data-overlay]) {
+  background: transparent !important;
+}
+body:has([data-overlay]) #root {
+  background: transparent !important;
+  height: auto;
+}
+
 /* Glassmorphism utilities */
 .glass {
   background:

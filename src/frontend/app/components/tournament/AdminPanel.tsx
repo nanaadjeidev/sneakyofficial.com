@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords } from "lucide-react";
+import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -343,6 +343,8 @@ function AdminMatchReporter({ onRefresh, flash }: {
 }) {
   const [matches, setMatches] = useState<AdminMatch[]>([]);
   const [reporting, setReporting] = useState<number | null>(null);
+  const [pinnedId, setPinnedId] = useState<number | null>(null);
+  const [scores, setScores] = useState<Record<number, [number, number]>>({});
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -355,6 +357,12 @@ function AdminMatchReporter({ onRefresh, flash }: {
           .map((m) => ({ ...m, round: r.round }))
       );
       setMatches(pending);
+      // Sync game scores from data
+      const scoreMap: Record<number, [number, number]> = {};
+      (data.rounds ?? []).forEach((r: { matches: Array<{ id: number; team1_games?: number; team2_games?: number }> }) => {
+        r.matches.forEach((m) => { scoreMap[m.id] = [m.team1_games ?? 0, m.team2_games ?? 0]; });
+      });
+      setScores(scoreMap);
     } catch {
       // ignore
     }
@@ -379,6 +387,28 @@ function AdminMatchReporter({ onRefresh, flash }: {
     }
   };
 
+  const pinMatch = async (matchId: number | null) => {
+    try {
+      await axios.post(`${API_URL}/api/tournament/admin/pin-match`, { guild_id: GUILD_ID, match_id: matchId }, { withCredentials: true });
+      setPinnedId(matchId);
+    } catch {
+      flash("Failed to pin match.", false);
+    }
+  };
+
+  const updateScore = async (matchId: number, t1: number, t2: number) => {
+    const clamped: [number, number] = [Math.max(0, t1), Math.max(0, t2)];
+    setScores((prev) => ({ ...prev, [matchId]: clamped }));
+    try {
+      await axios.post(`${API_URL}/api/tournament/admin/game-score`,
+        { match_id: matchId, team1_games: clamped[0], team2_games: clamped[1] },
+        { withCredentials: true }
+      );
+    } catch {
+      flash("Failed to update score.", false);
+    }
+  };
+
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-3">
@@ -393,36 +423,67 @@ function AdminMatchReporter({ onRefresh, flash }: {
         <p className="text-xs text-slate-500 italic">No pending matches.</p>
       ) : (
         <div className="flex flex-col gap-2">
-          {matches.map((m) => (
-            <div key={m.id} className="rounded-lg border border-slate-700/50 bg-slate-800/40 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-slate-500">Round {m.round} · Match #{m.id}</span>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
-                  m.status === "awaiting_confirmation"
-                    ? "text-yellow-300 border-yellow-600/40 bg-yellow-900/20"
-                    : "text-slate-400 border-slate-600/40"
-                }`}>
-                  {m.status === "awaiting_confirmation" ? "Awaiting confirm" : "Pending"}
-                </span>
+          {matches.map((m) => {
+            const isPinned = pinnedId === m.id;
+            const sc = scores[m.id] ?? [0, 0];
+            return (
+              <div key={m.id} className={`rounded-lg border p-3 transition-colors ${isPinned ? "border-purple-500/50 bg-purple-900/10" : "border-slate-700/50 bg-slate-800/40"}`}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-slate-500">Round {m.round} · Match #{m.id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                      m.status === "awaiting_confirmation"
+                        ? "text-yellow-300 border-yellow-600/40 bg-yellow-900/20"
+                        : "text-slate-400 border-slate-600/40"
+                    }`}>
+                      {m.status === "awaiting_confirmation" ? "Awaiting confirm" : "Pending"}
+                    </span>
+                    <button
+                      onClick={() => pinMatch(isPinned ? null : m.id)}
+                      title={isPinned ? "Unpin from overlay" : "Pin to overlay"}
+                      className={`p-1 rounded transition-colors ${isPinned ? "text-purple-400 hover:text-purple-300" : "text-slate-500 hover:text-slate-300"}`}
+                    >
+                      {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Game score controls */}
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wide shrink-0">Games</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => updateScore(m.id, sc[0] - 1, sc[1])} className="w-5 h-5 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs"><Minus className="w-3 h-3" /></button>
+                    <span className="text-xs font-mono text-slate-200 w-4 text-center">{sc[0]}</span>
+                    <button onClick={() => updateScore(m.id, sc[0] + 1, sc[1])} className="w-5 h-5 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs"><Plus className="w-3 h-3" /></button>
+                  </div>
+                  <span className="text-xs text-slate-600">–</span>
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => updateScore(m.id, sc[0], sc[1] - 1)} className="w-5 h-5 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs"><Minus className="w-3 h-3" /></button>
+                    <span className="text-xs font-mono text-slate-200 w-4 text-center">{sc[1]}</span>
+                    <button onClick={() => updateScore(m.id, sc[0], sc[1] + 1)} className="w-5 h-5 flex items-center justify-center rounded bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs"><Plus className="w-3 h-3" /></button>
+                  </div>
+                  <span className="text-[10px] text-slate-600 ml-1">{m.team1?.name} · {m.team2?.name}</span>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => reportWinner(m.id, m.team1!.id)}
+                    disabled={reporting === m.id}
+                    className="flex-1 text-xs px-2 py-2 rounded border border-blue-700/50 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40 disabled:opacity-50 truncate"
+                  >
+                    {m.team1?.name ?? "Team 1"} wins
+                  </button>
+                  <button
+                    onClick={() => reportWinner(m.id, m.team2!.id)}
+                    disabled={reporting === m.id}
+                    className="flex-1 text-xs px-2 py-2 rounded border border-purple-700/50 bg-purple-900/20 text-purple-300 hover:bg-purple-900/40 disabled:opacity-50 truncate"
+                  >
+                    {m.team2?.name ?? "Team 2"} wins
+                  </button>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => reportWinner(m.id, m.team1!.id)}
-                  disabled={reporting === m.id}
-                  className="flex-1 text-xs px-2 py-2 rounded border border-blue-700/50 bg-blue-900/20 text-blue-300 hover:bg-blue-900/40 disabled:opacity-50 truncate"
-                >
-                  {m.team1?.name ?? "Team 1"} wins
-                </button>
-                <button
-                  onClick={() => reportWinner(m.id, m.team2!.id)}
-                  disabled={reporting === m.id}
-                  className="flex-1 text-xs px-2 py-2 rounded border border-purple-700/50 bg-purple-900/20 text-purple-300 hover:bg-purple-900/40 disabled:opacity-50 truncate"
-                >
-                  {m.team2?.name ?? "Team 2"} wins
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -992,7 +1053,7 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
       const { data } = await axios.get(`${API_URL}/api/tournament`, { params: { id: tournamentId } });
       const r: number = data.rounds?.length ?? 0;
       setRounds(r);
-      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string } }) => ({
+      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string; best_of?: number } }) => ({
         round: rd.round,
         stage: rd.schedule?.stage_name
           ? { name: rd.schedule.stage_name, image: "" }
@@ -1000,6 +1061,7 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
         mode: rd.schedule?.mode_id
           ? { id: rd.schedule.mode_id, name: rd.schedule.mode_name ?? "", icon: "" }
           : null,
+        best_of: (rd.schedule?.best_of ?? 1) as 1 | 3 | 5 | 7,
       }));
       setSchedule(existing);
       setLoaded(true);
@@ -1016,6 +1078,7 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
           stage_name: r.stage?.name ?? null,
           mode_id: r.mode?.id ?? null,
           mode_name: r.mode?.name ?? null,
+          best_of: r.best_of ?? 1,
         })),
       };
       const { data } = await axios.post(`${API_URL}/api/tournament/admin/schedule`, payload, { withCredentials: true });

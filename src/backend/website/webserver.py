@@ -147,6 +147,12 @@ class WebServer:
             "/api/tournament/admin/match/complete", self.sneaky_api.tournament_admin_complete_match)
         self.app.router.add_post(
             "/api/tournament/admin/schedule", self.sneaky_api.tournament_admin_save_schedule)
+        self.app.router.add_post(
+            "/api/tournament/admin/pin-match", self.sneaky_api.tournament_admin_pin_match)
+        self.app.router.add_post(
+            "/api/tournament/admin/game-score", self.sneaky_api.tournament_admin_game_score)
+        self.app.router.add_get(
+            "/api/tournament/overlay", self.sneaky_api.serve_overlay_data)
         self.app.router.add_get(
             "/api/player/{discord_id}", self.sneaky_api.serve_player_profile)
         self.app.router.add_get(

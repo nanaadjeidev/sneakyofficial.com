@@ -87,6 +87,82 @@ def _build_r1_slots(team_ids: list[int]) -> list[tuple[Optional[int], Optional[i
 
 class TournamentManager:
 
+    # In-memory overlay state (resets on server restart — fine for live stream use)
+    _pinned: dict[int, int | None] = {}   # guild_id → match_id
+    _game_scores: dict[int, list[int]] = {}  # match_id → [team1_games, team2_games]
+
+    @classmethod
+    def pin_match(cls, guild_id: int, match_id: int | None) -> None:
+        cls._pinned[guild_id] = match_id
+
+    @classmethod
+    def get_pinned_match_id(cls, guild_id: int) -> int | None:
+        return cls._pinned.get(guild_id)
+
+    @classmethod
+    def set_game_score(cls, match_id: int, team1_games: int, team2_games: int) -> None:
+        cls._game_scores[match_id] = [team1_games, team2_games]
+
+    @classmethod
+    def get_game_score(cls, match_id: int) -> list[int]:
+        return cls._game_scores.get(match_id, [0, 0])
+
+    @staticmethod
+    async def get_pinned_match_data(guild_id: int) -> dict | None:
+        """Return full overlay data for the currently pinned match."""
+        match_id = TournamentManager.get_pinned_match_id(guild_id)
+        if not match_id:
+            return None
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                """SELECT m.id, m.round, m.match_number, m.team1_id, m.team2_id, m.status,
+                          m.tournament_id, t.name AS tournament_name,
+                          (SELECT MAX(round) FROM tournament_matches WHERE tournament_id = m.tournament_id) AS total_rounds
+                   FROM tournament_matches m
+                   JOIN tournaments t ON t.id = m.tournament_id
+                   WHERE m.id = %s""",
+                (match_id,)
+            )
+            match = await cur.fetchone()
+            if not match or not match["team1_id"] or not match["team2_id"]:
+                return None
+
+            await cur.execute(
+                "SELECT stage_name, mode_id, mode_name, best_of FROM tournament_round_schedule "
+                "WHERE tournament_id = %s AND round = %s",
+                (match["tournament_id"], match["round"])
+            )
+            schedule = await cur.fetchone()
+
+            teams = []
+            for team_id in [match["team1_id"], match["team2_id"]]:
+                await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (team_id,))
+                team_row = await cur.fetchone()
+                await cur.execute(
+                    """SELECT s.display_name FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON s.id = ttm.signup_id
+                       WHERE ttm.team_id = %s""",
+                    (team_id,)
+                )
+                members = [r["display_name"] for r in await cur.fetchall()]
+                teams.append({"id": team_id, "name": team_row["team_name"] if team_row else "Unknown", "members": members})
+
+        scores = TournamentManager.get_game_score(match_id)
+        return {
+            "match_id": match_id,
+            "round": match["round"],
+            "total_rounds": match["total_rounds"] or 1,
+            "tournament_name": match["tournament_name"],
+            "status": match["status"],
+            "team1": teams[0],
+            "team2": teams[1],
+            "team1_games": scores[0],
+            "team2_games": scores[1],
+            "best_of": (schedule["best_of"] if schedule and schedule.get("best_of") else 1),
+            "stage_name": schedule["stage_name"] if schedule else None,
+            "mode_name": schedule["mode_name"] if schedule else None,
+        }
+
     # ------------------------------------------------------------------ #
     #  Tournament lifecycle                                                #
     # ------------------------------------------------------------------ #
@@ -1032,6 +1108,7 @@ class TournamentManager:
                 prev = rnd - 1
                 f1 = match_lookup.get((prev, 2 * mn - 1))
                 f2 = match_lookup.get((prev, 2 * mn))
+                gs = TournamentManager.get_game_score(m["id"])
                 rounds[rnd].append({
                     "id": m["id"],
                     "match_number": mn,
@@ -1042,15 +1119,17 @@ class TournamentManager:
                     "is_bye": m["team2_id"] is None and m["status"] == "complete",
                     "feeder1_match_id": f1["id"] if f1 else None,
                     "feeder2_match_id": f2["id"] if f2 else None,
+                    "team1_games": gs[0],
+                    "team2_games": gs[1],
                 })
 
             await cur.execute(
-                "SELECT round, stage_name, mode_id, mode_name FROM tournament_round_schedule WHERE tournament_id = %s",
+                "SELECT round, stage_name, mode_id, mode_name, best_of FROM tournament_round_schedule WHERE tournament_id = %s",
                 (tournament_id,)
             )
             schedule_rows = await cur.fetchall()
             schedule = {
-                row["round"]: {"stage_name": row["stage_name"], "mode_id": row["mode_id"], "mode_name": row["mode_name"]}
+                row["round"]: {"stage_name": row["stage_name"], "mode_id": row["mode_id"], "mode_name": row["mode_name"], "best_of": row.get("best_of") or 1}
                 for row in schedule_rows
             }
 

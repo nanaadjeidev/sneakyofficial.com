@@ -35,6 +35,8 @@ interface WsEvent {
   twitch_username?: string | null;
   count?: number;
   signups?: PublicSignup[];
+  team1_games?: number;
+  team2_games?: number;
 }
 
 interface MyMatch {
@@ -74,12 +76,15 @@ interface Match {
   is_bye: boolean;
   feeder1_match_id?: number | null;
   feeder2_match_id?: number | null;
+  team1_games?: number;
+  team2_games?: number;
 }
 
 interface RoundSchedule {
   stage_name: string | null;
   mode_id: string | null;
   mode_name: string | null;
+  best_of?: number | null;
 }
 
 interface Round {
@@ -190,6 +195,7 @@ function MatchCard({
   playerTeamId,
   onTeamClick,
   wide = false,
+  bestOf = 1,
 }: {
   match: Match;
   isFinal: boolean;
@@ -200,6 +206,7 @@ function MatchCard({
   playerTeamId: number | null;
   onTeamClick?: (team: Team) => void;
   wide?: boolean;
+  bestOf?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const isFlashing = flashMatchId === match.id;
@@ -256,7 +263,13 @@ function MatchCard({
       <div className="flex items-center gap-1 px-1">
         <div className="flex-1 border-t border-slate-700/30" />
         <div className="flex items-center gap-1 text-slate-600">
-          <Swords className="w-3 h-3" />
+          {bestOf > 1 && match.team1 && match.team2 && match.status !== "complete" ? (
+            <span className="font-mono text-xs text-slate-400 tabular-nums">
+              {match.team1_games ?? 0}–{match.team2_games ?? 0}
+            </span>
+          ) : (
+            <Swords className="w-3 h-3" />
+          )}
           <MatchStatusIcon status={match.status} />
         </div>
         <div className="flex-1 border-t border-slate-700/30" />
@@ -366,6 +379,7 @@ function RoundColumn({
             recentWinnerTeamId={recentWinnerTeamId}
             playerTeamId={playerTeamId}
             onTeamClick={onTeamClick}
+            bestOf={schedule?.best_of ?? 1}
           />
         ))}
       </div>
@@ -648,6 +662,7 @@ function MobileBracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeam
             playerTeamId={playerTeamId}
             onTeamClick={onTeamClick}
             wide
+            bestOf={round.schedule?.best_of ?? 1}
           />
         ))}
         {visibleMatches.length === 0 && (
@@ -1124,6 +1139,21 @@ export default function Tournament() {
               }
             });
             fetchMyMatchRef.current();
+          } else if (msg.event === "game_score" && msg.match_id != null) {
+            setData((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                rounds: prev.rounds.map((r) => ({
+                  ...r,
+                  matches: r.matches.map((m) =>
+                    m.id === msg.match_id
+                      ? { ...m, team1_games: msg.team1_games ?? 0, team2_games: msg.team2_games ?? 0 }
+                      : m
+                  ),
+                })),
+              };
+            });
           } else if (msg.event === "tournament_locked" || msg.event === "tournament_cancelled") {
             fetchDataRef.current();
             fetchMyMatchRef.current();
