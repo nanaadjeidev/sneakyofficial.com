@@ -193,6 +193,12 @@ function BracketCard({ match, isFinal, isLive }: { match: Match; isFinal: boolea
   );
 }
 
+const CANVAS_W = 800;
+const CANVAS_H = 600;
+const HEADER_H = 46;  // header px-6 py-3 + text
+const BRACKET_PAD_X = 40;
+const BRACKET_PAD_Y = 24;
+
 function FullOverlay({ data }: { data: BracketData }) {
   const rounds = data.rounds;
   const totalRounds = rounds.length;
@@ -200,6 +206,11 @@ function FullOverlay({ data }: { data: BracketData }) {
   const totalH = numR1 * CELL_H;
   const totalW = totalRounds * (CARD_W + GAP) - GAP;
   const svgW = totalW + ARM;
+
+  // Scale bracket to always fit the available canvas area — no scrollbars
+  const availW = CANVAS_W - BRACKET_PAD_X * 2;
+  const availH = CANVAS_H - HEADER_H - BRACKET_PAD_Y * 2;
+  const scale = Math.min(1, availW / svgW, availH / totalH);
 
   // Build connector paths
   const lines: { d: string; winner: boolean }[] = [];
@@ -228,14 +239,40 @@ function FullOverlay({ data }: { data: BracketData }) {
     });
   }
 
+  const bracketContent = (
+    <>
+      <svg className="absolute inset-0 pointer-events-none overflow-visible" width={svgW} height={totalH}>
+        {lines.map((l, i) => (
+          <path key={i} d={l.d} fill="none"
+            stroke={l.winner ? "rgba(52,211,153,0.35)" : "rgba(255,255,255,0.12)"}
+            strokeWidth={1.5} strokeLinecap="round" />
+        ))}
+      </svg>
+      {rounds.map((r, ri) =>
+        r.matches.map((m, mi) => {
+          if (m.is_bye && !m.team1 && !m.team2) return null;
+          const centerY = cy(ri, mi);
+          const left = rx(ri);
+          const top = centerY - CARD_H / 2;
+          const isFinal = r.round === totalRounds;
+          const isLive = m.status === "pending" || m.status === "awaiting_confirmation";
+          return (
+            <div key={m.id} className="absolute" style={{ left, top }}>
+              <BracketCard match={m} isFinal={isFinal} isLive={isLive} />
+            </div>
+          );
+        })
+      )}
+    </>
+  );
+
   return (
-    <div data-overlay className="flex flex-col" style={{ width: 800, height: 600, background: "rgba(6,6,14,0.82)", backdropFilter: "blur(28px)", WebkitBackdropFilter: "blur(28px)", overflow: "hidden" }}>
+    <div data-overlay className="flex flex-col" style={{ width: CANVAS_W, height: CANVAS_H, background: "rgba(6,6,14,0.82)", backdropFilter: "blur(28px)", WebkitBackdropFilter: "blur(28px)", overflow: "hidden" }}>
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-3 shrink-0" style={{ borderBottom: "1px solid rgba(255,255,255,0.07)" }}>
         <Trophy className="w-4 h-4 text-yellow-400 shrink-0" />
         <span className="text-sm font-bold tracking-[0.2em] text-white/60 uppercase">{data.tournament.name}</span>
         <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
-        {/* Round labels */}
         <div className="flex gap-2">
           {rounds.map((r) => {
             const lbl = r.round === totalRounds ? "Final" : r.round === totalRounds - 1 && totalRounds > 2 ? "Semis" : `R${r.round}`;
@@ -251,34 +288,20 @@ function FullOverlay({ data }: { data: BracketData }) {
         </div>
       </div>
 
-      {/* Bracket canvas */}
-      <div className="flex-1 flex items-center justify-center overflow-auto">
-        <div className="relative" style={{ width: svgW, height: totalH }}>
-          {/* SVG connectors */}
-          <svg className="absolute inset-0 pointer-events-none overflow-visible" width={svgW} height={totalH}>
-            {lines.map((l, i) => (
-              <path key={i} d={l.d} fill="none"
-                stroke={l.winner ? "rgba(52,211,153,0.35)" : "rgba(255,255,255,0.12)"}
-                strokeWidth={1.5} strokeLinecap="round" />
-            ))}
-          </svg>
-          {/* Match cards */}
-          {rounds.map((r, ri) =>
-            r.matches.map((m, mi) => {
-              if (m.is_bye && !m.team1 && !m.team2) return null;
-              const centerY = cy(ri, mi);
-              const left = rx(ri);
-              const top = centerY - CARD_H / 2;
-              const isFinal = r.round === totalRounds;
-              const isLive = m.status === "pending" || m.status === "awaiting_confirmation";
-              return (
-                <div key={m.id} className="absolute" style={{ left, top }}>
-                  <BracketCard match={m} isFinal={isFinal} isLive={isLive} />
-                </div>
-              );
-            })
-          )}
-        </div>
+      {/* Bracket canvas — scaled to fit, never scrolls */}
+      <div className="flex-1 flex items-center justify-center overflow-hidden">
+        {scale < 1 ? (
+          // Scaled down: outer div takes up the scaled footprint so centering works
+          <div style={{ position: "relative", width: svgW * scale, height: totalH * scale, flexShrink: 0 }}>
+            <div style={{ position: "absolute", top: 0, left: 0, width: svgW, height: totalH, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+              {bracketContent}
+            </div>
+          </div>
+        ) : (
+          <div style={{ position: "relative", width: svgW, height: totalH }}>
+            {bracketContent}
+          </div>
+        )}
       </div>
     </div>
   );
