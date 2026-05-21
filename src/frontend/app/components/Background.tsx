@@ -350,8 +350,19 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // ── Pause animation when tab is hidden ──────────────────────────────────────
+  const hiddenRef = useRef(false);
+  useEffect(() => {
+    const handler = () => { hiddenRef.current = document.hidden; };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+
   // ── Per-frame: physics + line animation ──────────────────────────────────────
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    if (hiddenRef.current) return;
+    // Cap delta so a returning-from-hidden tab doesn't cause a huge jump
+    const delta = Math.min(rawDelta, 0.05);
     const hw = viewport.width  / 2;
     const hh = viewport.height / 2;
     const pts = particlesRef.current;

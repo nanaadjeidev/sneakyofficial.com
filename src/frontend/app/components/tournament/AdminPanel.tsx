@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check } from "lucide-react";
+import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
@@ -18,6 +18,7 @@ export interface Signup {
   rank: number | null;
   rank_tier: number | null;
   splattag: string | null;
+  is_sub?: boolean;
 }
 
 export const RANK_NAMES: Record<number, string> = {
@@ -69,6 +70,8 @@ interface LocalTeam {
   localId: string; // temporary client-side id
   name: string;
   signupIds: number[];
+  captainSignupId: number | null;
+  subSignupIds: number[];
 }
 
 // ---- Helpers -------------------------------------------------------------
@@ -77,11 +80,23 @@ const uid = () => Math.random().toString(36).slice(2);
 
 function buildLocalTeams(signups: Signup[], preTeams: PreTeam[]): { teams: LocalTeam[]; unassigned: number[] } {
   const teams: LocalTeam[] = preTeams.map((pt) => {
-    const members = signups.filter((s) => s.assigned_team_id === pt.id).map((s) => s.id);
-    return { localId: String(pt.id), name: pt.team_name, signupIds: members };
+    const teamSignups = signups.filter((s) => s.assigned_team_id === pt.id);
+    const mainIds = teamSignups.filter((s) => !s.is_sub).map((s) => s.id);
+    const subIds  = teamSignups.filter((s) =>  s.is_sub).map((s) => s.id);
+    // Restore captain: match captain_discord_id to signup discord_id
+    const captainSignup = pt.captain_discord_id
+      ? teamSignups.find((s) => s.discord_id === pt.captain_discord_id)
+      : null;
+    return {
+      localId: String(pt.id),
+      name: pt.team_name,
+      signupIds: mainIds,
+      captainSignupId: captainSignup?.id ?? null,
+      subSignupIds: subIds,
+    };
   });
 
-  const assigned = new Set(teams.flatMap((t) => t.signupIds));
+  const assigned = new Set(teams.flatMap((t) => [...t.signupIds, ...t.subSignupIds]));
   const unassigned = signups.filter((s) => !assigned.has(s.id)).map((s) => s.id);
 
   return { teams, unassigned };
@@ -128,44 +143,37 @@ function TeamSlot({
   team,
   signupsById,
   onDrop,
+  onDropSub,
   onRemovePlayer,
+  onRemoveSub,
   onRemoveTeam,
   onRename,
   onAutoFill,
+  onSetCaptain,
   unassignedPool,
   teamSize,
 }: {
   team: LocalTeam;
   signupsById: Map<number, Signup>;
   onDrop: (teamLocalId: string, signupId: number) => void;
+  onDropSub: (teamLocalId: string, signupId: number) => void;
   onRemovePlayer: (teamLocalId: string, signupId: number) => void;
+  onRemoveSub: (teamLocalId: string, signupId: number) => void;
   onRemoveTeam: (teamLocalId: string) => void;
   onRename: (teamLocalId: string, name: string) => void;
   onAutoFill: (teamLocalId: string) => void;
+  onSetCaptain: (teamLocalId: string, signupId: number | null) => void;
   unassignedPool: number[];
   teamSize: number;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const [subDragOver, setSubDragOver] = useState(false);
   const full = team.signupIds.length >= teamSize;
 
   return (
-    <div
-      className={`rounded-lg border p-3 transition-colors ${
-        dragOver && !full
-          ? "border-purple-500/70 bg-purple-900/20"
-          : "border-slate-700/50 bg-slate-800/30"
-      }`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault();
-        setDragOver(false);
-        const sid = parseInt(e.dataTransfer.getData("signupId"), 10);
-        if (!isNaN(sid)) onDrop(team.localId, sid);
-      }}
-    >
+    <div className="rounded-lg border border-slate-700/50 bg-slate-800/30 p-3 transition-colors flex flex-col gap-2">
       {/* Header */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex items-center gap-2">
         <input
           className="flex-1 bg-transparent border-b border-slate-600 text-sm font-semibold text-white focus:outline-none focus:border-purple-400 pb-0.5 min-w-0"
           value={team.name}
@@ -176,11 +184,7 @@ function TeamSlot({
           {team.signupIds.length}/{teamSize}
         </span>
         {!full && unassignedPool.length > 0 && (
-          <button
-            title="Auto-fill remaining spots"
-            onClick={() => onAutoFill(team.localId)}
-            className="text-slate-500 hover:text-blue-400 shrink-0"
-          >
+          <button title="Auto-fill remaining spots" onClick={() => onAutoFill(team.localId)} className="text-slate-500 hover:text-blue-400 shrink-0">
             <RefreshCw className="w-3.5 h-3.5" />
           </button>
         )}
@@ -189,19 +193,42 @@ function TeamSlot({
         </button>
       </div>
 
-      {/* Members */}
-      <div className="flex flex-col gap-1 min-h-[60px]">
+      {/* Main roster drop zone */}
+      <div
+        className={`flex flex-col gap-1 min-h-[60px] rounded p-1 transition-colors ${
+          dragOver && !full ? "bg-purple-900/20 ring-1 ring-purple-500/50" : ""
+        }`}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const sid = parseInt(e.dataTransfer.getData("signupId"), 10);
+          if (!isNaN(sid)) onDrop(team.localId, sid);
+        }}
+      >
         {team.signupIds.map((sid) => {
           const s = signupsById.get(sid);
           if (!s) return null;
+          const isCaptain = team.captainSignupId === sid;
           return (
-            <PlayerPill
-              key={sid}
-              signup={s}
-              draggable
-              onDragStart={(e) => e.dataTransfer.setData("signupId", String(sid))}
-              onRemove={() => onRemovePlayer(team.localId, sid)}
-            />
+            <div key={sid} className="flex items-center gap-1 group">
+              <button
+                title={isCaptain ? "Remove captain" : "Set as captain"}
+                onClick={() => onSetCaptain(team.localId, isCaptain ? null : sid)}
+                className={`shrink-0 transition-colors ${isCaptain ? "text-yellow-400 hover:text-slate-500" : "text-slate-700 hover:text-yellow-400 opacity-0 group-hover:opacity-100"}`}
+              >
+                <Crown className="w-3 h-3" />
+              </button>
+              <div className="flex-1 min-w-0">
+                <PlayerPill
+                  signup={s}
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("signupId", String(sid))}
+                  onRemove={() => onRemovePlayer(team.localId, sid)}
+                />
+              </div>
+            </div>
           );
         })}
         {!full && (
@@ -209,6 +236,91 @@ function TeamSlot({
             {dragOver ? "Drop here" : "Drag player here"}
           </div>
         )}
+      </div>
+
+      {/* Subs drop zone */}
+      <div>
+        <div className="flex items-center gap-1 mb-1">
+          <UserPlus className="w-3 h-3 text-slate-600" />
+          <span className="text-[10px] text-slate-600 uppercase tracking-wide">Subs</span>
+          {team.subSignupIds.length > 0 && (
+            <span className="text-[10px] text-slate-500">({team.subSignupIds.length})</span>
+          )}
+        </div>
+        <div
+          className={`flex flex-col gap-1 min-h-[32px] rounded p-1 transition-colors border border-dashed ${
+            subDragOver ? "border-blue-500/50 bg-blue-900/15" : "border-slate-700/40"
+          }`}
+          onDragOver={(e) => { e.preventDefault(); setSubDragOver(true); }}
+          onDragLeave={() => setSubDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setSubDragOver(false);
+            const sid = parseInt(e.dataTransfer.getData("signupId"), 10);
+            if (!isNaN(sid)) onDropSub(team.localId, sid);
+          }}
+        >
+          {team.subSignupIds.map((sid) => {
+            const s = signupsById.get(sid);
+            if (!s) return null;
+            return (
+              <PlayerPill
+                key={sid}
+                signup={s}
+                draggable
+                onDragStart={(e) => e.dataTransfer.setData("signupId", String(sid))}
+                onRemove={() => onRemoveSub(team.localId, sid)}
+              />
+            );
+          })}
+          {team.subSignupIds.length === 0 && (
+            <div className="text-[10px] text-slate-700 italic text-center py-0.5">
+              {subDragOver ? "Drop sub here" : "Drag overflow players here"}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Confirm modal -------------------------------------------------------
+
+function ConfirmModal({
+  message,
+  onConfirm,
+  onCancel,
+  confirmLabel = "Confirm",
+  danger = false,
+}: {
+  message: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  confirmLabel?: string;
+  danger?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-2xl p-6 max-w-sm w-full mx-4">
+        <p className="text-sm text-slate-200 mb-5 leading-relaxed">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded border border-slate-600 text-slate-300 hover:border-slate-400"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={`px-4 py-2 text-sm rounded text-white font-semibold ${
+              danger
+                ? "bg-red-600 hover:bg-red-500"
+                : "bg-purple-600 hover:bg-purple-500"
+            }`}
+          >
+            {confirmLabel}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -233,9 +345,11 @@ export default function AdminPanel({
   const signupsById = new Map(signups.map((s) => [s.id, s]));
 
   const init = buildLocalTeams(signups, preTeams);
-  const [teams, setTeams] = useState<LocalTeam[]>(init.teams);
+  const [teams, setTeams]       = useState<LocalTeam[]>(init.teams);
   const [unassigned, setUnassigned] = useState<number[]>(init.unassigned);
+  const emptyTeam = (): LocalTeam => ({ localId: uid(), name: "", signupIds: [], captainSignupId: null, subSignupIds: [] });
   const [saving, setSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
   const [locking, setLocking] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -245,54 +359,115 @@ export default function AdminPanel({
   const [newAffectsRating, setNewAffectsRating] = useState(true);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{ message: string; label: string; danger: boolean; action: () => void } | null>(null);
 
   const flash = (text: string, ok: boolean) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
 
+  // ---- Warn on unsaved changes -------------------------------------------
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
   // ---- Drag from unassigned pool ----------------------------------------
 
-  const moveToTeam = useCallback((teamLocalId: string, signupId: number) => {
-    // Remove from any current team first
-    setTeams((prev) =>
-      prev.map((t) => ({
-        ...t,
-        signupIds: t.signupIds.filter((id) => id !== signupId),
-      }))
-    );
+  const removeSignupFromAll = (signupId: number) => {
+    setIsDirty(true);
+    setTeams((prev) => prev.map((t) => ({
+      ...t,
+      signupIds:    t.signupIds.filter((id) => id !== signupId),
+      subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+      captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
+    })));
     setUnassigned((prev) => prev.filter((id) => id !== signupId));
+  };
 
+  const moveToTeam = useCallback((teamLocalId: string, signupId: number) => {
+    setIsDirty(true);
     setTeams((prev) => {
-      const target = prev.find((t) => t.localId === teamLocalId);
-      if (!target || target.signupIds.length >= teamSize) return prev;
-      return prev.map((t) =>
-        t.localId === teamLocalId ? { ...t, signupIds: [...t.signupIds, signupId] } : t
-      );
+      const updated = prev.map((t) => ({
+        ...t,
+        signupIds:    t.signupIds.filter((id) => id !== signupId),
+        subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+        captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
+      }));
+      return updated.map((t) => {
+        if (t.localId !== teamLocalId) return t;
+        if (t.signupIds.length >= teamSize) return t;
+        return { ...t, signupIds: [...t.signupIds, signupId] };
+      });
     });
+    setUnassigned((prev) => prev.filter((id) => id !== signupId));
   }, [teamSize]);
 
+  const moveToSub = useCallback((teamLocalId: string, signupId: number) => {
+    setIsDirty(true);
+    setTeams((prev) => {
+      const updated = prev.map((t) => ({
+        ...t,
+        signupIds:    t.signupIds.filter((id) => id !== signupId),
+        subSignupIds: t.subSignupIds.filter((id) => id !== signupId),
+        captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId,
+      }));
+      return updated.map((t) =>
+        t.localId === teamLocalId && !t.subSignupIds.includes(signupId)
+          ? { ...t, subSignupIds: [...t.subSignupIds, signupId] }
+          : t
+      );
+    });
+    setUnassigned((prev) => prev.filter((id) => id !== signupId));
+  }, []);
+
   const removeFromTeam = useCallback((teamLocalId: string, signupId: number) => {
-    setTeams((prev) =>
-      prev.map((t) =>
-        t.localId === teamLocalId ? { ...t, signupIds: t.signupIds.filter((id) => id !== signupId) } : t
-      )
-    );
+    setIsDirty(true);
+    setTeams((prev) => prev.map((t) =>
+      t.localId === teamLocalId
+        ? { ...t, signupIds: t.signupIds.filter((id) => id !== signupId), captainSignupId: t.captainSignupId === signupId ? null : t.captainSignupId }
+        : t
+    ));
     setUnassigned((prev) => (prev.includes(signupId) ? prev : [...prev, signupId]));
   }, []);
 
+  const removeSubFromTeam = useCallback((teamLocalId: string, signupId: number) => {
+    setIsDirty(true);
+    setTeams((prev) => prev.map((t) =>
+      t.localId === teamLocalId ? { ...t, subSignupIds: t.subSignupIds.filter((id) => id !== signupId) } : t
+    ));
+    setUnassigned((prev) => (prev.includes(signupId) ? prev : [...prev, signupId]));
+  }, []);
+
+  const setCaptain = useCallback((teamLocalId: string, signupId: number | null) => {
+    setIsDirty(true);
+    setTeams((prev) => prev.map((t) =>
+      t.localId === teamLocalId ? { ...t, captainSignupId: signupId } : t
+    ));
+  }, []);
+
   const addTeam = () => {
-    setTeams((prev) => [...prev, { localId: uid(), name: "", signupIds: [] }]);
+    setIsDirty(true);
+    setTeams((prev) => [...prev, emptyTeam()]);
   };
 
   const removeTeam = (localId: string) => {
+    setIsDirty(true);
     const team = teams.find((t) => t.localId === localId);
-    if (team) setUnassigned((prev) => [...prev, ...team.signupIds.filter((id) => !prev.includes(id))]);
+    if (team) {
+      const allIds = [...team.signupIds, ...team.subSignupIds];
+      setUnassigned((prev) => [...prev, ...allIds.filter((id) => !prev.includes(id))]);
+    }
     setTeams((prev) => prev.filter((t) => t.localId !== localId));
   };
 
   const renameTeam = (localId: string, name: string) => {
+    setIsDirty(true);
     setTeams((prev) => prev.map((t) => (t.localId === localId ? { ...t, name } : t)));
   };
 
   const autoFill = (localId: string) => {
+    setIsDirty(true);
     const team = teams.find((t) => t.localId === localId);
     if (!team) return;
     const needed = teamSize - team.signupIds.length;
@@ -303,38 +478,33 @@ export default function AdminPanel({
   };
 
   const autoAssignAll = () => {
+    // Collect everyone: unassigned + anyone already in teams (full re-draft)
+    const allPlayerIds = [
+      ...unassigned,
+      ...teams.flatMap((t) => [...t.signupIds, ...t.subSignupIds]),
+    ];
+
     // Sort by rank score desc (best first); unranked (0) go last
-    const sortedPool = [...unassigned].sort((a, b) => {
+    const sortedPool = [...new Set(allPlayerIds)].sort((a, b) => {
       const sA = rankScore(signupsById.get(a)?.rank, signupsById.get(a)?.rank_tier);
       const sB = rankScore(signupsById.get(b)?.rank, signupsById.get(b)?.rank_tier);
       return sB - sA;
     });
 
-    // Deep-copy existing teams so we don't mutate state
-    const newTeams: LocalTeam[] = teams.map((t) => ({ ...t, signupIds: [...t.signupIds] }));
+    // Snake-draft all players into new teams from scratch
+    const numNew = Math.floor(sortedPool.length / teamSize);
+    const leftover = sortedPool.slice(numNew * teamSize);
+    const created: LocalTeam[] = Array.from({ length: numNew }, () => emptyTeam());
 
-    // Fill incomplete existing teams first (top of sorted pool)
-    let poolIdx = 0;
-    for (const t of newTeams) {
-      while (t.signupIds.length < teamSize && poolIdx < sortedPool.length) {
-        t.signupIds.push(sortedPool[poolIdx++]);
-      }
-    }
-
-    // Snake-draft remaining players into new teams
-    const remaining = sortedPool.slice(poolIdx);
-    const numNew = Math.floor(remaining.length / teamSize);
-    const leftover = remaining.slice(numNew * teamSize);
-    const created: LocalTeam[] = Array.from({ length: numNew }, () => ({ localId: uid(), name: "", signupIds: [] }));
-
-    remaining.slice(0, numNew * teamSize).forEach((sid, i) => {
+    sortedPool.slice(0, numNew * teamSize).forEach((sid, i) => {
       const round = Math.floor(i / numNew);
       const pos   = i % numNew;
       const idx   = round % 2 === 0 ? pos : numNew - 1 - pos;
       created[idx].signupIds.push(sid);
     });
 
-    setTeams([...newTeams, ...created]);
+    setIsDirty(true);
+    setTeams(created);
     setUnassigned(leftover);
   };
 
@@ -345,11 +515,16 @@ export default function AdminPanel({
     try {
       const payload = {
         tournament_id: tournament.id,
-        teams: teams.map((t) => ({ name: t.name, signup_ids: t.signupIds })),
+        teams: teams.map((t) => ({
+          name: t.name,
+          signup_ids: t.signupIds,
+          captain_signup_id: t.captainSignupId ?? null,
+          sub_signup_ids: t.subSignupIds,
+        })),
       };
       const { data } = await axios.post(`${API_URL}/api/tournament/admin/teams`, payload, { withCredentials: true });
       flash(data.message, data.ok);
-      if (data.ok) onRefresh();
+      if (data.ok) { setIsDirty(false); onRefresh(); }
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
       flash(msg ?? "Failed to save teams.", false);
@@ -358,18 +533,24 @@ export default function AdminPanel({
     }
   };
 
-  const lockTournament = async () => {
-    if (!confirm("This will close sign-ups and generate the bracket. Continue?")) return;
-    setLocking(true);
-    try {
-      const { data } = await axios.post(`${API_URL}/api/tournament/admin/lock`, { guild_id: GUILD_ID }, { withCredentials: true });
-      flash(data.message, data.ok);
-      if (data.ok) onRefresh();
-    } catch {
-      flash("Failed to lock tournament.", false);
-    } finally {
-      setLocking(false);
-    }
+  const lockTournament = () => {
+    setConfirmModal({
+      message: "This will close sign-ups and generate the bracket. Continue?",
+      label: "Lock & Generate",
+      danger: false,
+      action: async () => {
+        setLocking(true);
+        try {
+          const { data } = await axios.post(`${API_URL}/api/tournament/admin/lock`, { guild_id: GUILD_ID }, { withCredentials: true });
+          flash(data.message, data.ok);
+          if (data.ok) onRefresh();
+        } catch {
+          flash("Failed to lock tournament.", false);
+        } finally {
+          setLocking(false);
+        }
+      },
+    });
   };
 
   const createTournament = async () => {
@@ -402,22 +583,28 @@ export default function AdminPanel({
     }
   };
 
-  const cancelTournament = async () => {
-    if (!confirm(`Cancel "${tournament.name}"? This cannot be undone.`)) return;
-    setCancelling(true);
-    try {
-      const { data } = await axios.post(`${API_URL}/api/tournament/admin/cancel`, { guild_id: GUILD_ID }, { withCredentials: true });
-      flash(data.message, data.ok);
-      if (data.ok) {
-        setTeams([]);
-        setUnassigned([]);
-        onCancel();
-      }
-    } catch {
-      flash("Failed to cancel tournament.", false);
-    } finally {
-      setCancelling(false);
-    }
+  const cancelTournament = () => {
+    setConfirmModal({
+      message: `Cancel "${tournament.name}"? This cannot be undone.`,
+      label: "Cancel Tournament",
+      danger: true,
+      action: async () => {
+        setCancelling(true);
+        try {
+          const { data } = await axios.post(`${API_URL}/api/tournament/admin/cancel`, { guild_id: GUILD_ID }, { withCredentials: true });
+          flash(data.message, data.ok);
+          if (data.ok) {
+            setTeams([]);
+            setUnassigned([]);
+            onCancel();
+          }
+        } catch {
+          flash("Failed to cancel tournament.", false);
+        } finally {
+          setCancelling(false);
+        }
+      },
+    });
   };
 
   // ---- Render ------------------------------------------------------------
@@ -425,7 +612,28 @@ export default function AdminPanel({
   const isSignup = tournament.status === "signup";
 
   return (
-    <div className="rounded-xl border border-yellow-500/30 bg-yellow-900/10 p-4 mb-8">
+    <>
+    {confirmModal && (
+      <ConfirmModal
+        message={confirmModal.message}
+        confirmLabel={confirmModal.label}
+        danger={confirmModal.danger}
+        onConfirm={() => { setConfirmModal(null); confirmModal.action(); }}
+        onCancel={() => setConfirmModal(null)}
+      />
+    )}
+    <div className="rounded-xl border border-yellow-500/50 p-4 mb-8" style={{
+      background: "linear-gradient(135deg, rgba(120, 80, 0, 0.28) 0%, rgba(60, 40, 0, 0.22) 50%, rgba(100, 60, 0, 0.26) 100%)",
+      backdropFilter: "blur(28px) saturate(160%)",
+      WebkitBackdropFilter: "blur(28px) saturate(160%)",
+      boxShadow: "inset 0 1.5px 0 rgba(255, 210, 80, 0.18), inset 0 -1px 0 rgba(0,0,0,0.12), 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255, 200, 50, 0.08)",
+    }}>
+      {/* Unsaved changes warning */}
+      {isDirty && (
+        <div className="mb-3 flex items-center gap-2 text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-600/40 text-amber-300">
+          <span>Unsaved changes — click Save Teams to persist.</span>
+        </div>
+      )}
       {/* Admin header */}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -544,10 +752,13 @@ export default function AdminPanel({
                 team={team}
                 signupsById={signupsById}
                 onDrop={moveToTeam}
+                onDropSub={moveToSub}
                 onRemovePlayer={removeFromTeam}
+                onRemoveSub={removeSubFromTeam}
                 onRemoveTeam={removeTeam}
                 onRename={renameTeam}
                 onAutoFill={autoFill}
+                onSetCaptain={setCaptain}
                 unassignedPool={unassigned}
                 teamSize={teamSize}
               />
@@ -561,10 +772,7 @@ export default function AdminPanel({
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 const sid = parseInt(e.dataTransfer.getData("signupId"), 10);
-                if (!isNaN(sid)) {
-                  setTeams((prev) => prev.map((t) => ({ ...t, signupIds: t.signupIds.filter((id) => id !== sid) })));
-                  setUnassigned((prev) => (prev.includes(sid) ? prev : [...prev, sid]));
-                }
+                if (!isNaN(sid)) removeSignupFromAll(sid);
               }}
             >
               <p className="text-xs text-slate-500 mb-2">{unassigned.length} unassigned player(s) - drag into a team</p>
@@ -627,6 +835,7 @@ export default function AdminPanel({
 
       <PlayerProfilesSection />
     </div>
+    </>
   );
 }
 

@@ -130,13 +130,14 @@ function MatchStatusIcon({ status }: { status: Match["status"] }) {
 // ---- Team slot inside a match card ----------------------------------------
 
 function TeamSlot({
-  team, isWinner, isBye, isRecentWinner = false, isRecentLoser = false,
+  team, isWinner, isBye, isRecentWinner = false, isRecentLoser = false, isPlayerTeam = false,
 }: {
   team: Team | null;
   isWinner: boolean;
   isBye?: boolean;
   isRecentWinner?: boolean;
   isRecentLoser?: boolean;
+  isPlayerTeam?: boolean;
 }) {
   if (isBye || !team) {
     return <div className="px-3 py-2 rounded text-slate-600 italic text-xs bg-slate-900/30">BYE</div>;
@@ -149,6 +150,8 @@ function TeamSlot({
         ? "bg-red-500/15 border border-red-500/30 text-red-300 opacity-60"
         : isWinner
         ? "bg-green-500/15 border border-green-500/40 text-green-200"
+        : isPlayerTeam
+        ? "bg-blue-500/20 border border-blue-400/50 text-blue-100 shadow shadow-blue-500/20"
         : "bg-slate-900/40 border border-slate-700/40 text-slate-300"
     }`}>
       <div className="flex items-center gap-1.5">
@@ -170,6 +173,7 @@ function MatchCard({
   registerMatch,
   flashMatchId,
   recentWinnerTeamId,
+  playerTeamId,
 }: {
   match: Match;
   isFinal: boolean;
@@ -177,6 +181,7 @@ function MatchCard({
   registerMatch: RegisterMatchFn;
   flashMatchId: number | null;
   recentWinnerTeamId: number | null;
+  playerTeamId: number | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const isFlashing = flashMatchId === match.id;
@@ -186,9 +191,10 @@ function MatchCard({
     return () => registerMatch(roundNum, match.match_number, null);
   }, [roundNum, match.match_number, registerMatch]);
 
-  const isBye      = match.is_bye;
-  const awaitingT1 = !match.team1;
-  const awaitingT2 = !match.team2 && !isBye;
+  const isBye        = match.is_bye;
+  const awaitingT1   = !match.team1;
+  const awaitingT2   = !match.team2 && !isBye;
+  const hasPlayerTeam = playerTeamId != null && (match.team1?.id === playerTeamId || match.team2?.id === playerTeamId);
 
   return (
     <div
@@ -197,8 +203,12 @@ function MatchCard({
       className={`rounded-lg border p-1.5 w-52 flex flex-col gap-1 shadow-lg transition-all duration-500 ${
         isFlashing
           ? "border-green-400/80 shadow-green-500/30 shadow-md scale-[1.03]"
+          : isFinal && hasPlayerTeam
+          ? "border-blue-400/70 bg-yellow-900/10 shadow-blue-500/20 shadow-md"
           : isFinal
           ? "border-yellow-500/50 bg-yellow-900/10 shadow-yellow-900/10"
+          : hasPlayerTeam
+          ? "border-blue-500/60 bg-slate-800/70 shadow-blue-500/15 shadow-md"
           : "border-slate-600/50 bg-slate-800/70"
       }`}
     >
@@ -216,6 +226,7 @@ function MatchCard({
           isWinner={match.winner_id === match.team1?.id}
           isRecentWinner={recentWinnerTeamId === match.team1?.id && match.status === "complete"}
           isRecentLoser={isFlashing && match.winner_id !== null && match.winner_id !== match.team1?.id}
+          isPlayerTeam={playerTeamId === match.team1?.id}
         />
       )}
 
@@ -238,6 +249,7 @@ function MatchCard({
           isWinner={match.winner_id === match.team2?.id}
           isRecentWinner={recentWinnerTeamId === match.team2?.id && match.status === "complete"}
           isRecentLoser={isFlashing && match.winner_id !== null && match.winner_id !== match.team2?.id}
+          isPlayerTeam={playerTeamId === match.team2?.id}
         />
       )}
     </div>
@@ -255,6 +267,7 @@ function RoundColumn({
   n1half,
   flashMatchId,
   recentWinnerTeamId,
+  playerTeamId,
 }: {
   round: number;
   matches: Match[];
@@ -264,6 +277,7 @@ function RoundColumn({
   n1half: number;
   flashMatchId: number | null;
   recentWinnerTeamId: number | null;
+  playerTeamId: number | null;
 }) {
   const isFinalRound = round === totalRounds;
   const modeData  = schedule?.mode_id    ? MODES.find((m) => m.id === schedule.mode_id)       : null;
@@ -322,6 +336,7 @@ function RoundColumn({
             registerMatch={registerMatch}
             flashMatchId={flashMatchId}
             recentWinnerTeamId={recentWinnerTeamId}
+            playerTeamId={playerTeamId}
           />
         ))}
       </div>
@@ -331,7 +346,7 @@ function RoundColumn({
 
 // ---- Bracket with SVG connector lines ------------------------------------
 
-function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId }: { rounds: Round[]; totalRounds: number; flashMatchId: number | null; recentWinnerTeamId: number | null }) {
+function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId, playerTeamId }: { rounds: Round[]; totalRounds: number; flashMatchId: number | null; recentWinnerTeamId: number | null; playerTeamId: number | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef       = useRef<SVGSVGElement>(null);
   const matchEls     = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -475,6 +490,7 @@ function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId }: 
               n1half={n1half}
               flashMatchId={flashMatchId}
               recentWinnerTeamId={recentWinnerTeamId}
+              playerTeamId={playerTeamId}
             />
           );
         })}
@@ -491,6 +507,7 @@ function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId }: 
             n1half={1}
             flashMatchId={flashMatchId}
             recentWinnerTeamId={recentWinnerTeamId}
+            playerTeamId={playerTeamId}
           />
         )}
 
@@ -508,6 +525,7 @@ function BracketView({ rounds, totalRounds, flashMatchId, recentWinnerTeamId }: 
               n1half={n1half}
               flashMatchId={flashMatchId}
               recentWinnerTeamId={recentWinnerTeamId}
+              playerTeamId={playerTeamId}
             />
           );
         })}
@@ -544,9 +562,15 @@ function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
   }).length;
 
   return (
-    <div className="py-10">
+    <div className="py-8 px-6 rounded-2xl mb-8" style={{
+      background: "linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 50%, rgba(255,255,255,0.06) 100%)",
+      backdropFilter: "blur(32px) saturate(180%)",
+      WebkitBackdropFilter: "blur(32px) saturate(180%)",
+      border: "1px solid rgba(255,255,255,0.12)",
+      boxShadow: "inset 0 1.5px 0 rgba(255,255,255,0.18), 0 8px 32px rgba(0,0,0,0.35)",
+    }}>
       <div className="text-center mb-6">
-        <Users className="w-12 h-12 mx-auto mb-3 text-slate-600" />
+        <Users className="w-12 h-12 mx-auto mb-3 text-slate-500" />
         <p className="text-lg font-semibold text-slate-300">
           Sign-ups are open!{" "}
           {visibleCount > 0 && (
@@ -716,6 +740,7 @@ export default function Tournament() {
   const [flashMatchId,        setFlashMatchId]        = useState<number | null>(null);
   const [recentWinnerTeamId,  setRecentWinnerTeamId]  = useState<number | null>(null);
   const [myMatch,             setMyMatch]             = useState<MyMatch | null>(null);
+  const [playerTeamId,        setPlayerTeamId]        = useState<number | null>(null);
   const [myMatchLoading,      setMyMatchLoading]      = useState(false);
   const [reportLoading,       setReportLoading]       = useState(false);
   const [reportMsg,           setReportMsg]           = useState<string | null>(null);
@@ -766,7 +791,9 @@ export default function Tournament() {
         params: { guild_id: GUILD_ID },
         withCredentials: true,
       });
-      setMyMatch(res.match ?? null);
+      const m = res.match ?? null;
+      setMyMatch(m);
+      if (m?.player_team_id != null) setPlayerTeamId(m.player_team_id);
     } catch {
       setMyMatch(null);
     } finally {
@@ -890,6 +917,7 @@ export default function Tournament() {
       fetchMyMatch();
     } else {
       setMyMatch(null);
+      setPlayerTeamId(null);
     }
   }, [loggedIn, data?.tournament?.status, fetchMyMatch]);
 
@@ -1077,7 +1105,7 @@ export default function Tournament() {
         {tournament && rounds.length > 0 && (
           <div className="rounded-2xl border border-slate-700/50 bg-slate-800/60 backdrop-blur-sm shadow-2xl">
             <div className="overflow-x-auto p-6">
-              <BracketView rounds={rounds} totalRounds={totalRounds} flashMatchId={flashMatchId} recentWinnerTeamId={recentWinnerTeamId} />
+              <BracketView rounds={rounds} totalRounds={totalRounds} flashMatchId={flashMatchId} recentWinnerTeamId={recentWinnerTeamId} playerTeamId={playerTeamId} />
             </div>
           </div>
         )}

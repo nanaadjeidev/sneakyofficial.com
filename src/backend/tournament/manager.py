@@ -642,16 +642,24 @@ class TournamentManager:
     async def get_signups_for_admin(tournament_id: int) -> dict:
         """Return all signups + current pre-team assignments for the admin UI."""
         async with DBContextManager(use_dict=True) as cur:
+            # Ensure is_sub column exists (idempotent migration)
+            await cur.execute(
+                """ALTER TABLE tournament_team_members
+                   ADD COLUMN IF NOT EXISTS is_sub TINYINT(1) NOT NULL DEFAULT 0"""
+            )
+
             await cur.execute(
                 """SELECT s.id, s.display_name, s.discord_id, s.twitch_username, s.assigned_team_id,
                           COALESCE(pp.trueskill_mu, 25.0) AS rating,
-                          pp.`rank`, pp.rank_tier, pp.splattag
+                          pp.`rank`, pp.rank_tier, pp.splattag,
+                          COALESCE(ttm.is_sub, 0) AS is_sub
                    FROM tournament_signups s
                    LEFT JOIN player_profiles pp ON (
                        (s.discord_id IS NOT NULL AND pp.discord_id = s.discord_id)
                        OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
                            AND LOWER(pp.twitch_username) = LOWER(s.twitch_username))
                    )
+                   LEFT JOIN tournament_team_members ttm ON ttm.signup_id = s.id
                    WHERE s.tournament_id = %s ORDER BY s.signed_up_at""",
                 (tournament_id,)
             )
@@ -684,9 +692,15 @@ class TournamentManager:
     async def save_pre_teams(tournament_id: int, teams_data: list[dict]) -> tuple[bool, str]:
         """Save manual team assignments from the web UI.
 
-        teams_data: [{"name": str, "signup_ids": [int, ...]}]
+        teams_data: [{"name": str, "signup_ids": [int, ...], "captain_signup_id": int|None, "sub_signup_ids": [int, ...]}]
         """
         async with DBContextManager() as cur:
+            # Ensure is_sub column exists
+            await cur.execute(
+                """ALTER TABLE tournament_team_members
+                   ADD COLUMN IF NOT EXISTS is_sub TINYINT(1) NOT NULL DEFAULT 0"""
+            )
+
             await cur.execute(
                 "SELECT status FROM tournaments WHERE id = %s", (tournament_id,)
             )
@@ -694,8 +708,13 @@ class TournamentManager:
             if not row or row[0] != "signup":
                 return False, "Tournament is not in sign-up phase."
 
-            # Validate every signup ID belongs to this tournament before touching anything
-            all_ids = list({int(sid) for team in teams_data for sid in team.get("signup_ids", []) if sid})
+            # Collect all signup IDs (main + subs) for validation
+            all_ids = list({
+                int(sid)
+                for team in teams_data
+                for sid in (team.get("signup_ids", []) + team.get("sub_signup_ids", []))
+                if sid
+            })
             if all_ids:
                 fmt = ",".join(["%s"] * len(all_ids))
                 await cur.execute(
@@ -729,21 +748,34 @@ class TournamentManager:
             saved = 0
             for i, team in enumerate(teams_data):
                 signup_ids = team.get("signup_ids", [])
-                if not signup_ids:
+                sub_signup_ids = team.get("sub_signup_ids", [])
+                if not signup_ids and not sub_signup_ids:
                     continue
 
                 team_name = team.get("name") or _generate_team_name(set())
                 captain_id = None
 
-                # Find first Discord-linked player to be captain
-                fmt = ",".join(["%s"] * len(signup_ids))
-                await cur.execute(
-                    f"SELECT id, discord_id FROM tournament_signups WHERE id IN ({fmt}) AND discord_id IS NOT NULL ORDER BY signed_up_at LIMIT 1",
-                    signup_ids
-                )
-                cap_row = await cur.fetchone()
-                if cap_row:
-                    captain_id = cap_row[1]
+                # Use admin-designated captain if provided
+                explicit_captain_signup_id = team.get("captain_signup_id")
+                if explicit_captain_signup_id:
+                    await cur.execute(
+                        "SELECT discord_id FROM tournament_signups WHERE id = %s AND discord_id IS NOT NULL",
+                        (int(explicit_captain_signup_id),)
+                    )
+                    cap_row = await cur.fetchone()
+                    if cap_row:
+                        captain_id = cap_row[0]
+
+                # Fall back to first Discord-linked player
+                if captain_id is None and signup_ids:
+                    fmt = ",".join(["%s"] * len(signup_ids))
+                    await cur.execute(
+                        f"SELECT id, discord_id FROM tournament_signups WHERE id IN ({fmt}) AND discord_id IS NOT NULL ORDER BY signed_up_at LIMIT 1",
+                        signup_ids
+                    )
+                    cap_row = await cur.fetchone()
+                    if cap_row:
+                        captain_id = cap_row[1]
 
                 await cur.execute(
                     """INSERT INTO tournament_teams
@@ -756,7 +788,17 @@ class TournamentManager:
 
                 for sid in signup_ids:
                     await cur.execute(
-                        "INSERT INTO tournament_team_members (team_id, signup_id) VALUES (%s, %s)",
+                        "INSERT INTO tournament_team_members (team_id, signup_id, is_sub) VALUES (%s, %s, 0)",
+                        (team_id, sid)
+                    )
+                    await cur.execute(
+                        "UPDATE tournament_signups SET assigned_team_id = %s WHERE id = %s",
+                        (team_id, sid)
+                    )
+
+                for sid in sub_signup_ids:
+                    await cur.execute(
+                        "INSERT INTO tournament_team_members (team_id, signup_id, is_sub) VALUES (%s, %s, 1)",
                         (team_id, sid)
                     )
                     await cur.execute(
