@@ -10,7 +10,7 @@ function getWsUrl(): string {
   return base.replace(/^http/, "ws") + "/api/tournament/ws";
 }
 
-interface Team { id: number; name: string; members: string[] }
+interface Team { id: number; name: string; members: string[]; captain: string | null }
 interface GameMap { game_number: number; stage_name: string | null }
 interface GameResult { game_number: number; winner: 1 | 2 }
 
@@ -201,6 +201,182 @@ function ScorePip({ filled, win }: { filled: boolean; win: boolean }) {
   );
 }
 
+const CROWN = (
+  <svg viewBox="0 0 20 14" style={{ width: "clamp(8px, 1vw, 11px)", height: "auto", flexShrink: 0 }} fill="none">
+    <path d="M1 13L4 5L7.5 9L10 2L12.5 9L16 5L19 13H1Z" fill="rgb(250,204,21)" stroke="rgb(234,179,8)" strokeWidth="1" strokeLinejoin="round"/>
+  </svg>
+);
+
+function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) {
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    if (team.members.length <= 1) return;
+    const t = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % team.members.length);
+        setVisible(true);
+      }, 280);
+    }, 2800);
+    return () => clearInterval(t);
+  }, [team.members.length]);
+
+  const member = team.members[idx] ?? "";
+  const isCaptain = member === team.captain;
+
+  return (
+    <div style={{
+      flexShrink: 0,
+      width: "clamp(80px, 11vw, 160px)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: align === "left" ? "flex-end" : "flex-start",
+      gap: "0.2vh",
+    }}>
+      <span style={{
+        fontSize: "clamp(6px, 0.7vw, 8px)",
+        fontWeight: 700,
+        letterSpacing: "0.2em",
+        textTransform: "uppercase",
+        color: "rgba(255,255,255,0.20)",
+        lineHeight: 1,
+      }}>
+        {team.name}
+      </span>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.35vw",
+          flexDirection: align === "left" ? "row-reverse" : "row",
+          opacity: visible ? 1 : 0,
+          transform: visible ? "translateY(0)" : `translateY(${align === "left" ? "-" : ""}4px)`,
+          transition: "opacity 0.28s ease, transform 0.28s ease",
+        }}
+      >
+        {isCaptain && CROWN}
+        <span style={{
+          fontSize: "clamp(9px, 1.1vw, 13px)",
+          fontWeight: isCaptain ? 800 : 500,
+          color: isCaptain ? "rgb(250,204,21)" : "rgba(255,255,255,0.72)",
+          textShadow: isCaptain ? "0 0 10px rgba(250,204,21,0.4)" : "none",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          lineHeight: 1,
+          maxWidth: "clamp(70px, 10vw, 145px)",
+          direction: align === "left" ? "rtl" : "ltr",
+        }}>
+          {member}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const TICKER_MESSAGES = [
+  { type: "msg" as const, text: "Have you joined the Sneaky Discord? Type !discord in chat!" },
+  { type: "msg" as const, text: "Follow twitch.tv/sneakyonnightmode to catch every stream!" },
+  { type: "msg" as const, text: "Enjoying the tournament? Type !discord for the community server!" },
+];
+
+function InfoTicker({ stageName, modeData, stageData, stageKey }: {
+  stageName: string | null;
+  modeData: { icon: string; name: string } | null | undefined;
+  stageData: { image: string } | null | undefined;
+  stageKey: number;
+}) {
+  type Item = { type: "stage" } | { type: "msg"; text: string };
+  const items: Item[] = [
+    { type: "stage" },
+    ...TICKER_MESSAGES,
+  ];
+
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+
+  useEffect(() => {
+    const t = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % items.length);
+        setVisible(true);
+      }, 350);
+    }, 5000);
+    return () => clearInterval(t);
+  }, [items.length]);
+
+  // When stage changes, snap back to stage item
+  const prevStageKey = useRef(stageKey);
+  useEffect(() => {
+    if (stageKey !== prevStageKey.current) {
+      prevStageKey.current = stageKey;
+      setVisible(false);
+      setTimeout(() => { setIdx(0); setVisible(true); }, 350);
+    }
+  }, [stageKey]);
+
+  const item = items[idx];
+
+  return (
+    <div style={{
+      flexShrink: 0,
+      width: "clamp(120px, 18vw, 260px)",
+      display: "flex",
+      alignItems: "center",
+      gap: "0.6vw",
+      overflow: "hidden",
+    }}>
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5vw",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateX(0)" : "translateX(6px)",
+        transition: "opacity 0.35s ease, transform 0.35s ease",
+        width: "100%",
+      }}>
+        {item.type === "stage" ? (
+          <>
+            {stageData && (
+              <div style={{
+                width: "clamp(36px, 4.5vw, 56px)",
+                height: "clamp(20px, 2.5vw, 32px)",
+                borderRadius: "0.3vw",
+                overflow: "hidden",
+                border: "1px solid rgba(255,255,255,0.12)",
+                flexShrink: 0,
+              }}>
+                <img src={stageData.image} alt={stageName ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              </div>
+            )}
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.2vh", minWidth: 0 }}>
+              {modeData && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4vw" }}>
+                  <img src={modeData.icon} alt={modeData.name}
+                    style={{ width: "clamp(9px, 1vw, 12px)", height: "clamp(9px, 1vw, 12px)", objectFit: "contain", opacity: 0.65 }} />
+                  <span style={{ fontSize: "clamp(7px, 0.8vw, 9px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(255,255,255,0.40)", lineHeight: 1 }}>
+                    {modeData.name}
+                  </span>
+                </div>
+              )}
+              <span style={{ fontSize: "clamp(8px, 0.95vw, 11px)", fontWeight: 600, color: stageName ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.22)", fontStyle: stageName ? "normal" : "italic", lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {stageName ?? "Counterpick pending…"}
+              </span>
+            </div>
+          </>
+        ) : (
+          <span style={{ fontSize: "clamp(8px, 0.95vw, 11px)", fontWeight: 600, color: "rgba(145,70,255,0.85)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {item.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function OverlayRibbon() {
   useRibbonKeyframes();
 
@@ -377,72 +553,34 @@ export default function OverlayRibbon() {
           pointerEvents: "none",
         }} />
 
-        {/* Live / status pill */}
-        <div style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "0.45vw",
-          flexShrink: 0,
-        }}>
-          {isLive && (
-            <div style={{ position: "relative", width: "clamp(5px, 0.6vw, 7px)", height: "clamp(5px, 0.6vw, 7px)", flexShrink: 0 }}>
-              <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-60" />
-              <div className="absolute inset-0 rounded-full bg-red-500" />
-            </div>
-          )}
-          <span style={{
-            fontSize: "clamp(7px, 0.85vw, 10px)",
-            fontWeight: 900,
-            letterSpacing: "0.28em",
-            textTransform: "uppercase",
-            color: isLive ? "rgba(239,68,68,0.90)" : isComplete ? "rgba(52,211,153,0.70)" : "rgba(255,255,255,0.30)",
-          }}>
-            {isLive ? "LIVE" : isComplete ? "DONE" : "CONF"}
-          </span>
-        </div>
+        {/* Team 1 player ticker */}
+        <PlayerTicker team={match.team1} align="left" />
 
         <Divider />
 
-        {/* Round + BO */}
-        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", gap: "0.2vh" }}>
-          <span style={{
-            fontSize: "clamp(7px, 0.82vw, 9px)",
-            fontWeight: 700,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.28)",
-            lineHeight: 1,
-          }}>
-            {roundLabel}
-          </span>
-          {bestOf > 1 && (
-            <span style={{
-              fontSize: "clamp(6px, 0.7vw, 8px)",
-              fontWeight: 600,
-              letterSpacing: "0.14em",
-              color: "rgba(255,255,255,0.18)",
-              lineHeight: 1,
-            }}>
-              BO{bestOf}
+        {/* Live / status + Round */}
+        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.25vh" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.4vw" }}>
+            {isLive && (
+              <div style={{ position: "relative", width: "clamp(5px, 0.55vw, 6px)", height: "clamp(5px, 0.55vw, 6px)", flexShrink: 0 }}>
+                <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-60" />
+                <div className="absolute inset-0 rounded-full bg-red-500" />
+              </div>
+            )}
+            <span style={{ fontSize: "clamp(7px, 0.8vw, 9px)", fontWeight: 900, letterSpacing: "0.28em", textTransform: "uppercase", color: isLive ? "rgba(239,68,68,0.90)" : isComplete ? "rgba(52,211,153,0.70)" : "rgba(255,255,255,0.30)" }}>
+              {isLive ? "LIVE" : isComplete ? "DONE" : "CONF"}
             </span>
-          )}
+          </div>
+          <span style={{ fontSize: "clamp(6px, 0.72vw, 8px)", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.22)", lineHeight: 1 }}>
+            {roundLabel}{bestOf > 1 ? ` · BO${bestOf}` : ""}
+          </span>
         </div>
 
         <Divider />
 
         {/* Team 1 name + pips */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.3vh" }}>
-          <span style={{
-            fontSize: "clamp(11px, 1.6vw, 18px)",
-            fontWeight: 900,
-            lineHeight: 1,
-            color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
-            textShadow: isT1Winner ? "0 0 20px rgba(52,211,153,0.5)" : "none",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: "100%",
-          }}>
+          <span style={{ fontSize: "clamp(11px, 1.5vw, 17px)", fontWeight: 900, lineHeight: 1, color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)", textShadow: isT1Winner ? "0 0 20px rgba(52,211,153,0.5)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
             {match.team1.name}
           </span>
           {bestOf > 1 && (
@@ -453,55 +591,15 @@ export default function OverlayRibbon() {
         </div>
 
         {/* Score */}
-        <div
-          className={scoreFlash ? "spl-ribbon-score-pop" : undefined}
-          style={{
-            flexShrink: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: "0.8vw",
-          }}
-        >
-          <span style={{
-            fontSize: "clamp(18px, 3vw, 36px)",
-            fontWeight: 900,
-            fontVariantNumeric: "tabular-nums",
-            lineHeight: 1,
-            color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.92)",
-          }}>
-            {match.team1_games}
-          </span>
-          <span style={{
-            fontSize: "clamp(10px, 1.4vw, 16px)",
-            fontWeight: 100,
-            color: "rgba(255,255,255,0.20)",
-          }}>
-            —
-          </span>
-          <span style={{
-            fontSize: "clamp(18px, 3vw, 36px)",
-            fontWeight: 900,
-            fontVariantNumeric: "tabular-nums",
-            lineHeight: 1,
-            color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.92)",
-          }}>
-            {match.team2_games}
-          </span>
+        <div className={scoreFlash ? "spl-ribbon-score-pop" : undefined} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "0.7vw" }}>
+          <span style={{ fontSize: "clamp(18px, 2.8vw, 34px)", fontWeight: 900, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.92)" }}>{match.team1_games}</span>
+          <span style={{ fontSize: "clamp(10px, 1.2vw, 14px)", fontWeight: 100, color: "rgba(255,255,255,0.20)" }}>—</span>
+          <span style={{ fontSize: "clamp(18px, 2.8vw, 34px)", fontWeight: 900, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.92)" }}>{match.team2_games}</span>
         </div>
 
         {/* Team 2 name + pips */}
         <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.3vh" }}>
-          <span style={{
-            fontSize: "clamp(11px, 1.6vw, 18px)",
-            fontWeight: 900,
-            lineHeight: 1,
-            color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
-            textShadow: isT2Winner ? "0 0 20px rgba(52,211,153,0.5)" : "none",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            maxWidth: "100%",
-          }}>
+          <span style={{ fontSize: "clamp(11px, 1.5vw, 17px)", fontWeight: 900, lineHeight: 1, color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)", textShadow: isT2Winner ? "0 0 20px rgba(52,211,153,0.5)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
             {match.team2.name}
           </span>
           {bestOf > 1 && (
@@ -513,60 +611,13 @@ export default function OverlayRibbon() {
 
         <Divider />
 
-        {/* Mode + stage */}
-        <div
-          key={`stage-${stageKey}`}
-          className="spl-ribbon-stage-slide"
-          style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "0.6vw" }}
-        >
-          {stageData && (
-            <div style={{
-              width: "clamp(36px, 4.5vw, 56px)",
-              height: "clamp(20px, 2.5vw, 32px)",
-              borderRadius: "0.3vw",
-              overflow: "hidden",
-              border: "1px solid rgba(255,255,255,0.12)",
-              flexShrink: 0,
-            }}>
-              <img
-                src={stageData.image}
-                alt={stageName ?? ""}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </div>
-          )}
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.15vh" }}>
-            {modeData && (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.4vw" }}>
-                <img
-                  src={modeData.icon}
-                  alt={modeData.name}
-                  style={{ width: "clamp(9px, 1vw, 12px)", height: "clamp(9px, 1vw, 12px)", objectFit: "contain", opacity: 0.65 }}
-                />
-                <span style={{
-                  fontSize: "clamp(7px, 0.8vw, 9px)",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  letterSpacing: "0.14em",
-                  color: "rgba(255,255,255,0.40)",
-                  lineHeight: 1,
-                }}>
-                  {modeData.name}
-                </span>
-              </div>
-            )}
-            <span style={{
-              fontSize: "clamp(8px, 0.95vw, 11px)",
-              fontWeight: 600,
-              color: stageName ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.22)",
-              fontStyle: stageName ? "normal" : "italic",
-              lineHeight: 1,
-              whiteSpace: "nowrap",
-            }}>
-              {stageName ?? "Counterpick pending…"}
-            </span>
-          </div>
-        </div>
+        {/* Team 2 player ticker */}
+        <PlayerTicker team={match.team2} align="right" />
+
+        <Divider />
+
+        {/* Stage + messages ticker */}
+        <InfoTicker stageName={stageName} modeData={modeData} stageData={stageData} stageKey={stageKey} />
     </div>
   );
 }
