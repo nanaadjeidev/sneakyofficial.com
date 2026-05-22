@@ -217,22 +217,25 @@ const CROWN = (
 );
 
 function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) {
+  const members = team.captain
+    ? [team.captain, ...team.members.filter((m) => m !== team.captain)]
+    : team.members;
   const [idx, setIdx] = useState(0);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    if (team.members.length <= 1) return;
+    if (members.length <= 1) return;
     const t = setInterval(() => {
       setVisible(false);
       setTimeout(() => {
-        setIdx((i) => (i + 1) % team.members.length);
+        setIdx((i) => (i + 1) % members.length);
         setVisible(true);
       }, 280);
     }, 2800);
     return () => clearInterval(t);
-  }, [team.members.length]);
+  }, [members.length]);
 
-  const member = team.members[idx] ?? "";
+  const member = members[idx] ?? "";
   const isCaptain = member === team.captain;
 
   return (

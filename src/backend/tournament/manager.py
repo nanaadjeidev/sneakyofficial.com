@@ -1449,15 +1449,18 @@ class TournamentManager:
 
                 # Use admin-designated captain if provided
                 explicit_captain_signup_id = team.get("captain_signup_id")
+                logger.info("save_pre_teams: team=%r captain_signup_id=%r", team_name, explicit_captain_signup_id)
                 if explicit_captain_signup_id:
                     await cur.execute(
                         "SELECT discord_id FROM tournament_signups WHERE id = %s AND discord_id IS NOT NULL",
                         (int(explicit_captain_signup_id),)
                     )
                     cap_row = await cur.fetchone()
+                    logger.info("save_pre_teams: discord_id lookup for signup %r -> %r", explicit_captain_signup_id, cap_row)
                     if cap_row:
                         captain_id = cap_row[0]
 
+                logger.info("save_pre_teams: final captain_id=%r for team=%r", captain_id, team_name)
                 # Fall back to first Discord-linked player
                 if captain_id is None and signup_ids:
                     fmt = ",".join(["%s"] * len(signup_ids))
