@@ -180,30 +180,26 @@ export default function OverlayRibbon() {
 
   if (!match) {
     return (
-      <div data-overlay style={{ width: "100%", height: "100%", display: "flex", alignItems: "flex-end" }}>
-        <div style={{
-          width: "100%",
-          padding: "0 2vw",
-          boxSizing: "border-box",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          height: "clamp(52px, 9vh, 80px)",
-          background: "rgba(6,6,18,0.88)",
-          backdropFilter: "blur(24px)",
-          WebkitBackdropFilter: "blur(24px)",
-          borderTop: "1px solid rgba(255,255,255,0.07)",
+      <div data-overlay style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: "rgba(6,6,18,0.88)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        borderTop: "1px solid rgba(255,255,255,0.07)",
+      }}>
+        <span style={{
+          fontSize: "clamp(8px, 1vw, 11px)",
+          fontWeight: 700,
+          letterSpacing: "0.3em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.18)",
         }}>
-          <span style={{
-            fontSize: "clamp(8px, 1vw, 11px)",
-            fontWeight: 700,
-            letterSpacing: "0.3em",
-            textTransform: "uppercase",
-            color: "rgba(255,255,255,0.18)",
-          }}>
-            No match pinned
-          </span>
-        </div>
+          No match pinned
+        </span>
       </div>
     );
   }
@@ -233,13 +229,6 @@ export default function OverlayRibbon() {
         width: "100%",
         height: "100%",
         display: "flex",
-        alignItems: "flex-end",
-      }}
-    >
-      <div style={{
-        width: "100%",
-        height: "clamp(52px, 9vh, 80px)",
-        display: "flex",
         alignItems: "center",
         gap: "1.6vw",
         padding: "0 2vw",
@@ -250,7 +239,8 @@ export default function OverlayRibbon() {
         borderTop: "1.5px solid rgba(255,255,255,0.08)",
         position: "relative",
         overflow: "hidden",
-      }}>
+      }}
+    >
         {/* Stage art ambient bleed */}
         {stageData && (
           <img
@@ -474,7 +464,6 @@ export default function OverlayRibbon() {
             </span>
           </div>
         </div>
-      </div>
     </div>
   );
 }
