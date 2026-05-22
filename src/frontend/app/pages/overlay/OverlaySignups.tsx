@@ -124,6 +124,7 @@ export default function OverlaySignups() {
         });
         const t = data.tournament;
         if (!t) { setView("idle"); return; }
+        const fetchedTeams: TournamentTeam[] = data.teams ?? [];
         if (t.status === "signup") {
           setTournamentName(t.name);
           try {
@@ -134,9 +135,9 @@ export default function OverlaySignups() {
             setSignups(reversed);
           } catch { /* ignore */ }
           setView("signup");
-        } else if (t.status === "active" && (data.teams ?? []).length > 0) {
+        } else if (fetchedTeams.length > 0) {
           setTournamentName(t.name);
-          setTeams(data.teams);
+          setTeams(fetchedTeams);
           setView("teams");
         } else {
           setView("idle");

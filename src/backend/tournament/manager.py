@@ -1323,6 +1323,7 @@ class TournamentManager:
                     "affects_rating": bool(t["affects_rating"]),
                     "created_at": t["created_at"].isoformat() if t["created_at"] else None,
                 },
+                "teams": list(teams.values()),
                 "rounds": [
                     {"round": rnd, "matches": rounds[rnd], "schedule": schedule.get(rnd)}
                     for rnd in sorted(rounds.keys())
