@@ -526,8 +526,6 @@ class ProfileManager:
                         (player["discord_id"], loser_games, winner_games, loser_games, winner_games)
                     )
 
-        # Update tournament wins for the final match winner
-        await ProfileManager._check_tournament_winner(match["tournament_id"], winner_team_id, affects_rating=affects_rating)
         return skipped
 
     @staticmethod
@@ -628,7 +626,7 @@ class ProfileManager:
         order = {
             "rating":       "trueskill_mu - 3 * trueskill_sigma DESC",
             "wins":         "matches_won DESC, tournament_wins DESC",
-            "rank":         "rank DESC, trueskill_mu - 3 * trueskill_sigma DESC",
+            "rank":         "`rank` DESC, trueskill_mu - 3 * trueskill_sigma DESC",
             "tourney_wins": "tournament_wins DESC, trueskill_mu - 3 * trueskill_sigma DESC",
             "special_wins": "special_tournament_wins DESC, trueskill_mu - 3 * trueskill_sigma DESC",
             "total_wins":   "(tournament_wins + special_tournament_wins) DESC, trueskill_mu - 3 * trueskill_sigma DESC",
