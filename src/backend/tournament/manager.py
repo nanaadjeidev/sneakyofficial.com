@@ -714,6 +714,25 @@ class TournamentManager:
                 match["is_home_team"] = match["home_team_id"] == team_id
                 if not match["is_home_team"]:
                     match["room_code"] = None  # away team never sees the code
+
+                # Fetch round schedule (mode + best_of)
+                await cur.execute(
+                    "SELECT mode_id, mode_name, best_of FROM tournament_round_schedule "
+                    "WHERE tournament_id = %s AND round = %s LIMIT 1",
+                    (tournament_id, match["round"])
+                )
+                sched = await cur.fetchone()
+                match["schedule"] = dict(sched) if sched else None
+
+                # Fetch per-match game stages (counterpick maps)
+                await cur.execute(
+                    "SELECT game_number, stage_name FROM tournament_round_games "
+                    "WHERE tournament_id = %s AND round = %s AND match_id = %s "
+                    "ORDER BY game_number",
+                    (tournament_id, match["round"], match["id"])
+                )
+                match["games"] = [dict(g) for g in await cur.fetchall()]
+
             return match
 
     @staticmethod

@@ -52,6 +52,8 @@ interface MyMatch {
   reported_winner_id: number | null;
   is_home_team: boolean;
   room_code: string | null;
+  schedule?: { mode_id: string | null; mode_name: string | null; best_of: number } | null;
+  games?: { game_number: number; stage_name: string | null }[];
 }
 
 const CARD_H  = 84; // estimated match-card height (px) used for gap maths
@@ -849,7 +851,6 @@ function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
 function MatchReportCard({
   match,
   opponentMatchId,
-  schedule,
   loading,
   message,
   onReport,
@@ -858,13 +859,19 @@ function MatchReportCard({
 }: {
   match: MyMatch;
   opponentMatchId?: number | null;
-  schedule?: RoundSchedule | null;
   loading: boolean;
   message: string | null;
   onReport: (result: "win" | "loss") => void;
   onConfirm: () => void;
   onDispute: () => void;
 }) {
+  const modeData = match.schedule?.mode_id ? MODES.find((m) => m.id === match.schedule!.mode_id) : null;
+  const bestOf = match.schedule?.best_of ?? 1;
+  const gameSlots = Array.from({ length: bestOf }, (_, i) => {
+    const gameNum = i + 1;
+    const stageName = match.games?.find((g) => g.game_number === gameNum)?.stage_name ?? null;
+    return { gameNum, stageName };
+  });
   const myTeamName    = match.player_team_id === match.team1_id ? match.team1_name : match.team2_name;
   const theirTeamName = match.player_team_id === match.team1_id ? match.team2_name : match.team1_name;
   const hasOpponent   = !!match.opposing_team_id;
@@ -899,25 +906,31 @@ function MatchReportCard({
         }
       </p>
 
-      {schedule && (schedule.mode_name || schedule.stage_name || schedule.best_of) && (
-        <div className="mb-4 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
-          {schedule.mode_name && (
-            <span className="flex items-center gap-1 font-medium text-purple-300">
-              {(() => {
-                const modeData = MODES.find((m) => m.id === schedule.mode_id);
-                return modeData?.icon
-                  ? <img src={modeData.icon} alt="" className="w-4 h-4 object-contain" />
-                  : null;
-              })()}
-              {schedule.mode_name}
-            </span>
+      {(modeData || bestOf > 0) && (
+        <div className="mb-4 rounded-lg bg-slate-800/50 border border-slate-700/50 overflow-hidden">
+          {(modeData || bestOf > 1) && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/50">
+              {modeData?.icon && <img src={modeData.icon} alt="" className="w-4 h-4 object-contain" />}
+              {modeData && <span className="text-xs font-medium text-purple-300">{match.schedule!.mode_name}</span>}
+              {bestOf > 1 && <span className="text-xs text-slate-500 ml-auto">Best of {bestOf}</span>}
+            </div>
           )}
-          {schedule.best_of && schedule.best_of > 1 && (
-            <span className="text-slate-500">Best of {schedule.best_of}</span>
-          )}
-          {schedule.stage_name && (
-            <span className="text-slate-400">Starts on <span className="text-slate-200">{schedule.stage_name}</span></span>
-          )}
+          <div className="divide-y divide-slate-700/40">
+            {gameSlots.map(({ gameNum, stageName }) => {
+              const label = gameNum === 1
+                ? bestOf === 1 ? "Stage" : "G1 — Home pick"
+                : `G${gameNum} — Counterpick`;
+              return (
+                <div key={gameNum} className="flex items-center gap-2 px-3 py-1.5">
+                  <span className="text-[10px] text-slate-500 uppercase tracking-wide w-28 shrink-0">{label}</span>
+                  {stageName
+                    ? <span className="text-xs text-slate-200">{stageName}</span>
+                    : <span className="text-xs text-slate-500 italic">Counterpick</span>
+                  }
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1457,7 +1470,6 @@ export default function Tournament() {
           <MatchReportCard
             match={myMatch}
             opponentMatchId={opponentMatchId}
-            schedule={rounds.find((r) => r.round === myMatch.round)?.schedule}
             loading={reportLoading}
             message={reportMsg}
             onReport={handleReport}
