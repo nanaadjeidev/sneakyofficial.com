@@ -5,6 +5,8 @@ import { STAGES, MODES, type Stage, type Mode } from "./splatoonData";
 export interface GameMap {
   game_number: number;
   stage_name: string | null;
+  mode_id: string | null;
+  mode_name: string | null;
 }
 
 export interface RoundMapMode {
@@ -141,14 +143,14 @@ function ModePicker({ value, onChange }: { value: Mode | null; onChange: (m: Mod
 // ---- Helpers ---------------------------------------------------------------
 
 function buildDefaultGameMaps(bestOf: number): GameMap[] {
-  return Array.from({ length: bestOf }, (_, i) => ({ game_number: i + 1, stage_name: null }));
+  return Array.from({ length: bestOf }, (_, i) => ({ game_number: i + 1, stage_name: null, mode_id: null, mode_name: null }));
 }
 
 function syncGameMaps(current: GameMap[], bestOf: number): GameMap[] {
   const result: GameMap[] = [];
   for (let i = 1; i <= bestOf; i++) {
     const existing = current.find((g) => g.game_number === i);
-    result.push(existing ?? { game_number: i, stage_name: null });
+    result.push(existing ?? { game_number: i, stage_name: null, mode_id: null, mode_name: null });
   }
   return result;
 }
@@ -170,10 +172,10 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
     onChange([...rest, updated].sort((a, b) => a.round - b.round));
   };
 
-  const updateGameMap = (round: number, gameNumber: number, stageName: string | null) => {
+  const updateGameMap = (round: number, gameNumber: number, patch: Partial<GameMap>) => {
     const entry = value.find((r) => r.round === round) ?? { round, stage: null, mode: null, best_of: 1 as const, game_maps: [] };
     const gameMaps = entry.game_maps.map((g) =>
-      g.game_number === gameNumber ? { ...g, stage_name: stageName } : g
+      g.game_number === gameNumber ? { ...g, ...patch } : g
     );
     update(round, { game_maps: gameMaps });
   };
@@ -194,7 +196,6 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
               {getRoundLabel(round, rounds)}
             </p>
             <div className="flex flex-col gap-2">
-              <ModePicker value={entry.mode} onChange={(m) => update(round, { mode: m })} />
               {/* Best of selector */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-slate-500 shrink-0">Best of</span>
@@ -215,25 +216,47 @@ export default function MapModePicker({ rounds, value, onChange }: Props) {
                   ))}
                 </div>
               </div>
-              {/* Per-game stage pickers */}
-              <div className="flex flex-col gap-1.5 mt-0.5">
-                {gameMaps.map((gm) => {
-                  const stageObj = gm.stage_name ? STAGES.find((s) => s.name === gm.stage_name) ?? null : null;
-                  const label = gm.game_number === 1
-                    ? bestOf === 1 ? "Stage" : "Game 1 — Home pick"
-                    : `Game ${gm.game_number} — Counterpick`;
-                  return (
-                    <div key={gm.game_number}>
-                      <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-wide">{label}</p>
-                      <StagePicker
-                        value={stageObj}
-                        placeholder={gm.game_number === 1 ? "Pick stage…" : "? — fill after game"}
-                        onChange={(s) => updateGameMap(round, gm.game_number, s?.name ?? null)}
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+              {/* For bo1 show single mode + stage; for bo>1 show per-game mode + stage */}
+              {bestOf === 1 ? (
+                <div className="flex flex-col gap-1.5">
+                  <div>
+                    <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-wide">Mode</p>
+                    <ModePicker value={entry.mode} onChange={(m) => update(round, { mode: m })} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-slate-500 mb-1 uppercase tracking-wide">Stage</p>
+                    <StagePicker
+                      value={gameMaps[0]?.stage_name ? STAGES.find((s) => s.name === gameMaps[0].stage_name) ?? null : null}
+                      placeholder="Pick stage…"
+                      onChange={(s) => updateGameMap(round, 1, { stage_name: s?.name ?? null })}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 mt-0.5">
+                  {gameMaps.map((gm) => {
+                    const stageObj = gm.stage_name ? STAGES.find((s) => s.name === gm.stage_name) ?? null : null;
+                    const modeObj = gm.mode_id ? MODES.find((m) => m.id === gm.mode_id) ?? null : null;
+                    const label = gm.game_number === 1
+                      ? "Game 1 — Home pick"
+                      : `Game ${gm.game_number} — Counterpick`;
+                    return (
+                      <div key={gm.game_number} className="rounded-lg border border-slate-700/40 bg-slate-800/30 p-2.5 flex flex-col gap-1.5">
+                        <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">{label}</p>
+                        <ModePicker
+                          value={modeObj}
+                          onChange={(m) => updateGameMap(round, gm.game_number, { mode_id: m?.id ?? null, mode_name: m?.name ?? null })}
+                        />
+                        <StagePicker
+                          value={stageObj}
+                          placeholder={gm.game_number === 1 ? "Pick stage…" : "? — fill after game"}
+                          onChange={(s) => updateGameMap(round, gm.game_number, { stage_name: s?.name ?? null })}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         );

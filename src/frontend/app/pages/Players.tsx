@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Helmet } from "react-helmet";
 import axios from "axios";
-import { Users } from "lucide-react";
+import { Users, Pencil, Check, X } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import { useAuth } from "../hooks/useAuth";
 import { RANK_OPTIONS, rankLabel, type ProfileRow } from "../components/tournament/AdminPanel";
@@ -25,6 +25,8 @@ export default function Players() {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [rankSaving, setRankSaving] = useState<Record<string, boolean>>({});
+  const [splattagEdit, setSplattagEdit] = useState<Record<number, string | null>>({});
+  const [splattagSaving, setSplattagSaving] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -77,6 +79,25 @@ export default function Players() {
     }
   };
 
+  const saveSplattag = async (playerId: number) => {
+    const tag = splattagEdit[playerId]?.trim();
+    if (!tag) return;
+    setSplattagSaving((prev) => ({ ...prev, [playerId]: true }));
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/player/${playerId}/splattag`,
+        { splattag: tag },
+        { withCredentials: true },
+      );
+      setPlayers((prev) => prev.map((p) => p.id === playerId ? { ...p, splattag: tag } : p));
+      setSplattagEdit((prev) => ({ ...prev, [playerId]: null }));
+    } catch {
+      // leave edit open on failure
+    } finally {
+      setSplattagSaving((prev) => ({ ...prev, [playerId]: false }));
+    }
+  };
+
   return (
     <PageWrapper>
       <Helmet>
@@ -120,8 +141,9 @@ export default function Players() {
                       <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide">Player</th>
                       <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide">Twitch</th>
                       <th className="text-left px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide">Rank</th>
+                      <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden sm:table-cell">Rating</th>
                       <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide">W/L</th>
-                      <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden md:table-cell">Tourneys</th>
+                      <th className="text-right px-4 py-3 text-xs text-slate-500 font-semibold uppercase tracking-wide hidden md:table-cell">Trophy Wins</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -129,7 +151,43 @@ export default function Players() {
                       <tr key={p.discord_id} className="border-b border-slate-800/50 hover:bg-slate-800/20 last:border-b-0 transition-colors">
                         <td className="px-4 py-3">
                           <div className="font-medium text-white">{p.display_name || "-"}</div>
-                          {p.splattag && <div className="text-slate-500 text-xs">{p.splattag}</div>}
+                          {splattagEdit[p.id] != null ? (
+                            <div className="flex items-center gap-1 mt-0.5">
+                              <input
+                                autoFocus
+                                value={splattagEdit[p.id] ?? ""}
+                                onChange={(e) => setSplattagEdit((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") saveSplattag(p.id);
+                                  if (e.key === "Escape") setSplattagEdit((prev) => ({ ...prev, [p.id]: null }));
+                                }}
+                                placeholder="Name#1234"
+                                className="w-32 bg-slate-900 border border-purple-500/60 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none"
+                              />
+                              <button
+                                onClick={() => saveSplattag(p.id)}
+                                disabled={splattagSaving[p.id]}
+                                className="text-green-400 hover:text-green-300 disabled:opacity-50"
+                              >
+                                <Check className="w-3 h-3" />
+                              </button>
+                              <button onClick={() => setSplattagEdit((prev) => ({ ...prev, [p.id]: null }))} className="text-slate-500 hover:text-slate-300">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 mt-0.5 group">
+                              <span className={`text-xs ${p.splattag ? "text-slate-500" : "text-red-500/60"}`}>
+                                {p.splattag ?? "no tag"}
+                              </span>
+                              <button
+                                onClick={() => setSplattagEdit((prev) => ({ ...prev, [p.id]: p.splattag ?? "" }))}
+                                className="opacity-0 group-hover:opacity-100 text-slate-600 hover:text-purple-400 transition-opacity"
+                              >
+                                <Pencil className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          )}
                           <div className="font-mono text-slate-700 text-[10px] select-all">{p.discord_id}</div>
                         </td>
                         <td className="px-4 py-3">
@@ -151,13 +209,19 @@ export default function Players() {
                             ))}
                           </select>
                         </td>
+                        <td className="px-4 py-3 text-right tabular-nums hidden sm:table-cell">
+                          <div className="text-purple-300 font-mono font-semibold">{p.rating}</div>
+                          <div className="text-[10px] text-slate-600">μ{p.trueskill_mu?.toFixed(1)} σ{p.trueskill_sigma?.toFixed(1)}</div>
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums text-sm">
                           <span className="text-green-400">{p.matches_won}</span>
                           <span className="text-slate-600 mx-0.5">/</span>
                           <span className="text-red-400/80">{p.matches_lost}</span>
                         </td>
                         <td className="px-4 py-3 text-right hidden md:table-cell">
-                          {p.tournament_wins > 0 ? <span className="text-yellow-400">{p.tournament_wins} 🏆</span> : <span className="text-slate-600">{p.tournaments_played}</span>}
+                          <span className={p.tournament_wins > 0 ? "text-yellow-400 font-semibold" : "text-slate-600"}>
+                            {p.tournament_wins > 0 ? `${p.tournament_wins} 🏆` : "0"}
+                          </span>
                         </td>
                       </tr>
                     ))}

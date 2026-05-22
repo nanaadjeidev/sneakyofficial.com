@@ -23,6 +23,81 @@ _GG_MESSAGES = [
     "🌙 Sneaky good plays! GGs!",
 ]
 
+_SPLATOON3_WEAPONS = [
+    # Shooters
+    "Splattershot Jr.", "Custom Splattershot Jr.", "Kensa Splattershot Jr.",
+    "Splattershot", "Tentatek Splattershot", "Hero Shot Replica",
+    "Splattershot Pro", "Forge Splattershot Pro", "Berry Splattershot Pro",
+    "52 Gal", "52 Gal Deco",
+    "96 Gal", "96 Gal Deco",
+    "Aerospray MG", "Aerospray RG",
+    "N-ZAP '85", "N-ZAP '89",
+    "Splash-o-matic", "Neo Splash-o-matic",
+    "Jet Squelcher", "Custom Jet Squelcher",
+    "L-3 Nozzlenose", "L-3 Nozzlenose D",
+    "H-3 Nozzlenose", "H-3 Nozzlenose D",
+    "Squeezer", "Foil Squeezer",
+    # Blasters
+    "Blaster", "Custom Blaster",
+    "Luna Blaster", "Luna Blaster Neo",
+    "Clash Blaster", "Clash Blaster Neo",
+    "Range Blaster", "Custom Range Blaster",
+    "Rapid Blaster", "Rapid Blaster Deco",
+    "Rapid Blaster Pro", "Rapid Blaster Pro Deco",
+    "S-BLAST '92", "S-BLAST '91",
+    # Rollers
+    "Carbon Roller", "Carbon Roller Deco",
+    "Splat Roller", "Krak-On Splat Roller", "Hero Roller Replica",
+    "Dynamo Roller", "Gold Dynamo Roller",
+    "Flingza Roller", "Foil Flingza Roller",
+    "Big Swig Roller", "Big Swig Roller Express",
+    # Brushes
+    "Inkbrush", "Inkbrush Nouveau",
+    "Octobrush", "Octobrush Nouveau",
+    "Painbrush", "Painbrush Nouveau",
+    # Chargers
+    "Splat Charger", "Firefin Splat Charger", "Hero Charger Replica",
+    "Splatterscope", "Firefin Splatterscope",
+    "Classic Squiffer", "New Squiffer",
+    "E-liter 4K", "Custom E-liter 4K",
+    "E-liter 4K Scope", "Custom E-liter 4K Scope",
+    "Bamboozler 14 Mk I", "Bamboozler 14 Mk II",
+    "Goo Tuber", "Custom Goo Tuber",
+    "Snipewriter 5H", "Snipewriter 5B",
+    # Sloshers
+    "Slosher", "Slosher Deco", "Hero Slosher Replica",
+    "Tri-Slosher", "Tri-Slosher Nouveau",
+    "Sloshing Machine", "Sloshing Machine Neo",
+    "Bloblobber", "Bloblobber Deco",
+    "Explosher", "Custom Explosher",
+    "Dread Wringer", "Dread Wringer D",
+    # Splatlings
+    "Mini Splatling", "Zink Mini Splatling",
+    "Heavy Splatling", "Heavy Splatling Deco", "Hero Splatling Replica",
+    "Hydra Splatling", "Custom Hydra Splatling",
+    "Ballpoint Splatling", "Ballpoint Splatling Nouveau",
+    "Nautilus 47", "Nautilus 79",
+    "Heavy Edit Splatling", "Heavy Edit Splatling Nouveau",
+    # Dualies
+    "Splat Dualies", "Enperry Splat Dualies", "Hero Dualie Replicas",
+    "Dualie Squelchers", "Custom Dualie Squelchers",
+    "Dark Tetra Dualies", "Light Tetra Dualies",
+    "Glooga Dualies", "Glooga Dualies Deco",
+    "Dapple Dualies", "Dapple Dualies Nouveau",
+    "Double Egg Splatters", "5-Star Splatters",
+    # Brellas
+    "Splat Brella", "Sorella Brella", "Hero Brella Replica",
+    "Tenta Brella", "Tenta Sorella Brella",
+    "Undercover Brella", "Undercover Sorella Brella",
+    "Recycled Brella 24 Mk I", "Recycled Brella 24 Mk II",
+    # Stringers
+    "Tri-Stringer", "Inkline Tri-Stringer",
+    "REEF-LUX 450", "REEF-LUX 450 Deco",
+    # Splatanas
+    "Splatana Stamper", "Splatana Stamper Nouveau",
+    "Splatana Wiper", "Splatana Wiper Deco",
+]
+
 _RANK_NAMES = {
     1: ("Starter Squid", "🦑"),
     2: ("Amateur Squid", "🐙"),
@@ -44,7 +119,6 @@ class TwitchBot(commands.Bot):
         self._discord_bot = discord_bot
         self._pending_match_id: Optional[int] = None
         self._pending_winner_team_id: Optional[int] = None
-        self._pending_splattags: dict[str, str] = {}
 
     async def event_ready(self) -> None:
         logger.info("Twitch bot ready: %s", self.nick)
@@ -90,39 +164,19 @@ class TwitchBot(commands.Bot):
 
     @commands.command(name="splattag")
     async def cmd_splattag(self, ctx: commands.Context) -> None:
-        """!splattag Name#1234 — stage your Splatoon tag for confirmation."""
+        """!splattag Name#1234 — set your Splatoon tag (one step, locked in immediately)."""
         import re
+        from backend.profile import ProfileManager
         parts = ctx.message.content.strip().split(maxsplit=1)
         if len(parts) < 2 or not parts[1].strip():
             await ctx.send(f"@{ctx.author.name} Usage: !splattag YourName#1234")
             return
         tag = parts[1].strip()
         if not re.match(r"^.{1,20}#\d{4}$", tag):
-            await ctx.send(f"@{ctx.author.name} Invalid format. Use !splattag YourName#1234 (up to 20 chars, then # and 4 digits).")
+            await ctx.send(f"@{ctx.author.name} Invalid format — use !splattag YourName#1234 (name up to 20 chars, then #0000).")
             return
-        self._pending_splattags[ctx.author.name.lower()] = tag
-        await ctx.send(f"@{ctx.author.name} Set your splattag to `{tag}`? Type !confirmtag to confirm or !canceltag to cancel. Once set it can only be changed by an admin.")
-
-    @commands.command(name="confirmtag")
-    async def cmd_confirmtag(self, ctx: commands.Context) -> None:
-        """!confirmtag — confirm the staged splattag."""
-        from backend.profile import ProfileManager
-        username = ctx.author.name.lower()
-        tag = self._pending_splattags.pop(username, None)
-        if not tag:
-            await ctx.send(f"@{ctx.author.name} No pending splattag. Use !splattag YourName#1234 first.")
-            return
-        ok, msg = await ProfileManager.set_splattag_by_twitch(username, tag)
+        ok, msg = await ProfileManager.set_splattag_by_twitch(ctx.author.name.lower(), tag)
         await ctx.send(f"@{ctx.author.name} {msg}")
-
-    @commands.command(name="canceltag")
-    async def cmd_canceltag(self, ctx: commands.Context) -> None:
-        """!canceltag — cancel the staged splattag."""
-        username = ctx.author.name.lower()
-        if self._pending_splattags.pop(username, None):
-            await ctx.send(f"@{ctx.author.name} Splattag cancelled.")
-        else:
-            await ctx.send(f"@{ctx.author.name} No pending splattag to cancel.")
 
     @commands.command(name="unsignup", aliases=["leavetournament", "out", "getmeout", "leave", "exit"])
     async def cmd_unsignup(self, ctx: commands.Context) -> None:
@@ -303,6 +357,11 @@ class TwitchBot(commands.Bot):
             f"| 💜 Discord: {global_config.discord_invite}"
         )
 
+    @commands.command(name="weapon", aliases=["randomweapon", "rweapon"])
+    async def cmd_weapon(self, ctx: commands.Context) -> None:
+        weapon = random.choice(_SPLATOON3_WEAPONS)
+        await ctx.send(f"🦑 @{ctx.author.name} your random weapon is: {weapon}!")
+
     @commands.command(name="gg")
     async def cmd_gg(self, ctx: commands.Context) -> None:
         await ctx.send(random.choice(_GG_MESSAGES))
@@ -315,17 +374,25 @@ class TwitchBot(commands.Bot):
     async def cmd_leaderboard(self, ctx: commands.Context) -> None:
         await ctx.send(f"🏆 Full tournament leaderboard → {global_config.website_url}/leaderboard")
 
+    @commands.command(name="howtojoin", aliases=["howtoenter", "howtosignup", "jointournament", "signuphelp", "setup"])
+    async def cmd_howtojoin(self, ctx: commands.Context) -> None:
+        await ctx.send(
+            f"@{ctx.author.name} To join the tournament: "
+            "1️⃣ Set your Splatoon tag → !splattag YourName#1234  "
+            f"2️⃣ Join our Discord → {global_config.discord_invite}  "
+            "3️⃣ In Discord do → /profile link twitch:yourtwitchname  "
+            "4️⃣ Come back here and type → !in  🦑"
+        )
+
     @commands.command(name="commands", aliases=["cmds", "help"])
     async def cmd_commands(self, ctx: commands.Context) -> None:
         await ctx.send(
-            "🦑 Tournament: !signup / !in — sign up | !unsignup / !out — leave | "
-            "!splattag Name#1234 then !confirmtag — set your Splatoon tag (required, once only) | "
-            "!bracket — bracket | !tournament — status | !confirm / !dispute — match result"
+            "🦑 To sign up: 1️⃣ !splattag YourName#1234  2️⃣ Join Discord (!discord) & do /profile link twitch:yourusername  3️⃣ !in — done!"
         )
         await ctx.send(
-            "📊 Rankings: !rank [user] / !stats [user] — your stats | !leaderboard / !splatstats — full leaderboard | "
-            "🌙 Social: !discord !website / !site !socials !gg !booyah | "
-            "ℹ️ !commands / !cmds / !help — this list"
+            "⚔️ Match: !in / !out | !confirm / !dispute — match result | !bracket — bracket | !tournament — status | "
+            "📊 !rank [user] / !stats | !leaderboard | "
+            "🌙 !gg !booyah !weapon | !discord !site"
         )
 
     # ------------------------------------------------------------------ #

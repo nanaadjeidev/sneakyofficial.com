@@ -177,6 +177,8 @@ tournament_wins INT DEFAULT 0,
 special_tournament_wins INT DEFAULT 0,
 matches_won INT DEFAULT 0,
 matches_lost INT DEFAULT 0,
+games_won INT DEFAULT 0,
+games_lost INT DEFAULT 0,
 tournaments_played INT DEFAULT 0,
 first_played_at DATETIME,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -191,6 +193,26 @@ INDEX idx_mu (trueskill_mu DESC)
 -- ALTER TABLE player_profiles ADD COLUMN predicted_rank_tier TINYINT DEFAULT NULL;
 -- ALTER TABLE player_profiles ADD COLUMN last_rank_check DATETIME DEFAULT NULL;
 -- ALTER TABLE player_profiles ADD COLUMN twitch_native BOOLEAN NOT NULL DEFAULT FALSE;
+-- ALTER TABLE player_profiles ADD COLUMN games_won INT DEFAULT 0;
+-- ALTER TABLE player_profiles ADD COLUMN games_lost INT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS tournament_match_ratings (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  match_id INT NOT NULL,
+  discord_id BIGINT NOT NULL,
+  mu_before FLOAT NOT NULL,
+  sigma_before FLOAT NOT NULL,
+  games_won_before INT NOT NULL DEFAULT 0,
+  games_lost_before INT NOT NULL DEFAULT 0,
+  matches_won_before INT NOT NULL DEFAULT 0,
+  matches_lost_before INT NOT NULL DEFAULT 0,
+  tournament_wins_before INT NOT NULL DEFAULT 0,
+  special_tournament_wins_before INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq (match_id, discord_id),
+  FOREIGN KEY (match_id) REFERENCES tournament_matches(id) ON DELETE CASCADE
+);
+-- Migration: (run the CREATE TABLE above)
 
 CREATE TABLE IF NOT EXISTS tournament_win_reports (
 id INT AUTO_INCREMENT PRIMARY KEY,
@@ -225,10 +247,14 @@ CREATE TABLE IF NOT EXISTS tournament_round_games (
   round INT NOT NULL,
   game_number INT NOT NULL,
   stage_name VARCHAR(100),
+  mode_id VARCHAR(30),
+  mode_name VARCHAR(50),
   UNIQUE KEY uq_game (tournament_id, round, game_number),
   FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
 -- Migration for existing installs: (run the CREATE TABLE above)
+-- ALTER TABLE tournament_round_games ADD COLUMN IF NOT EXISTS mode_id VARCHAR(30);
+-- ALTER TABLE tournament_round_games ADD COLUMN IF NOT EXISTS mode_name VARCHAR(50);
 
 CREATE TABLE IF NOT EXISTS tournament_match_games (
   id INT AUTO_INCREMENT PRIMARY KEY,

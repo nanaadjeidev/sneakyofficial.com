@@ -375,6 +375,31 @@ class SneakyApi:
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin
+    async def admin_adjust_tournament_wins(self, request: Request, admin_id: int) -> web.Response:
+        from ..profile import ProfileManager
+        try:
+            player_id = int(request.match_info["player_id"])
+            body = await request.json()
+            delta = int(body["delta"])
+            if delta not in (1, -1):
+                raise ValueError
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body. delta must be 1 or -1."}, status=400)
+        ok, msg = await ProfileManager.adjust_tournament_wins(player_id, delta)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def admin_end_tournament(self, request: Request, admin_id: int) -> web.Response:
+        from ..tournament import TournamentManager
+        try:
+            body = await request.json()
+            guild_id = int(body["guild_id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        ok, msg = await TournamentManager.admin_end_tournament(guild_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
     async def admin_set_discord(self, request: Request, admin_id: int) -> web.Response:
         from ..profile import ProfileManager
         try:
@@ -470,12 +495,14 @@ class SneakyApi:
                 for gm in entry.get("game_maps", []):
                     game_num = gm.get("game_number")
                     stage = gm.get("stage_name")
+                    gm_mode_id = gm.get("mode_id")
+                    gm_mode_name = gm.get("mode_name")
                     if game_num:
                         await cur.execute(
-                            """INSERT INTO tournament_round_games (tournament_id, round, game_number, stage_name)
-                               VALUES (%s, %s, %s, %s)
-                               ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)""",
-                            (tournament_id, entry.get("round"), game_num, stage)
+                            """INSERT INTO tournament_round_games (tournament_id, round, game_number, stage_name, mode_id, mode_name)
+                               VALUES (%s, %s, %s, %s, %s, %s)
+                               ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name), mode_id = VALUES(mode_id), mode_name = VALUES(mode_name)""",
+                            (tournament_id, entry.get("round"), game_num, stage, gm_mode_id, gm_mode_name)
                         )
         return web.json_response({"ok": True, "message": "Schedule saved."})
 

@@ -56,7 +56,7 @@ interface MyMatch {
   is_captain: boolean;
   room_code: string | null;
   schedule?: { mode_id: string | null; mode_name: string | null; best_of: number } | null;
-  games?: { game_number: number; stage_name: string | null }[];
+  games?: { game_number: number; stage_name: string | null; mode_id?: string | null; mode_name?: string | null }[];
   game_results?: { game_number: number; winner_team_id: number }[];
   team1_games?: number;
   team2_games?: number;
@@ -1012,12 +1012,17 @@ function MatchReportCard({
 
   const currentGame = match.current_game_number ?? 1;
 
+  const hasPerGameModes = (match.games ?? []).some((g) => g.mode_id);
+
   const gameSlots = Array.from({ length: bestOf }, (_, i) => {
     const gameNum = i + 1;
-    const stageName = match.games?.find((g) => g.game_number === gameNum)?.stage_name ?? null;
+    const gameData = match.games?.find((g) => g.game_number === gameNum);
+    const stageName = gameData?.stage_name ?? null;
+    const modeName = gameData?.mode_name ?? null;
+    const modeId = gameData?.mode_id ?? null;
     const result = gameResults.find((r) => r.game_number === gameNum);
     const didMyTeamWin = result ? result.winner_team_id === match.player_team_id : null;
-    return { gameNum, stageName, didMyTeamWin };
+    return { gameNum, stageName, modeName, modeId, didMyTeamWin };
   });
 
   return (
@@ -1073,23 +1078,35 @@ function MatchReportCard({
       {/* Mode + game map list */}
       {(modeData || bestOf > 0) && (
         <div className="mb-4 rounded-lg bg-slate-800/50 border border-slate-700/50 overflow-hidden">
-          {(modeData || bestOf > 1) && (
+          {(!hasPerGameModes && (modeData || bestOf > 1)) && (
             <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/50">
               {modeData?.icon && <img src={modeData.icon} alt="" className="w-4 h-4 object-contain" />}
               {modeData && <span className="text-xs font-medium text-purple-300">{match.schedule!.mode_name}</span>}
               {bestOf > 1 && <span className="text-xs text-slate-500 ml-auto">Best of {bestOf}</span>}
             </div>
           )}
+          {hasPerGameModes && bestOf > 1 && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/50">
+              <span className="text-xs text-slate-500 ml-auto">Best of {bestOf}</span>
+            </div>
+          )}
           <div className="divide-y divide-slate-700/40">
-            {gameSlots.map(({ gameNum, stageName, didMyTeamWin }) => {
+            {gameSlots.map(({ gameNum, stageName, modeName, modeId, didMyTeamWin }) => {
               const label = gameNum === 1
                 ? bestOf === 1 ? "Stage" : "G1 — Home pick"
                 : `G${gameNum} — Counterpick`;
+              const gameModeData = modeId ? MODES.find((m) => m.id === modeId) : null;
               return (
                 <div key={gameNum} className={`flex items-center gap-2 px-3 py-1.5 ${gameNum === currentGame ? "bg-blue-950/30" : ""}`}>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wide w-28 shrink-0">{label}</span>
                   {didMyTeamWin === true && <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />}
                   {didMyTeamWin === false && <X className="w-3 h-3 text-red-400 shrink-0" />}
+                  {gameModeData && (
+                    <span className="flex items-center gap-1 text-xs text-purple-300 shrink-0">
+                      <img src={gameModeData.icon} alt="" className="w-3 h-3 object-contain" />
+                      {modeName}
+                    </span>
+                  )}
                   {stageName
                     ? <span className="text-xs text-slate-200">{stageName}</span>
                     : <span className="text-xs text-slate-500 italic">TBD</span>
@@ -1109,15 +1126,21 @@ function MatchReportCard({
         </div>
       )}
 
-      {/* Room code (home team only) */}
-      {hasOpponent && match.is_home_team && match.room_code && (
+      {/* Room code — shown to home team, away team, and admins */}
+      {hasOpponent && match.room_code && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
-          <p className="text-xs text-amber-400/80 mb-1">You are the home team. Create the private lobby.</p>
+          <p className="text-xs text-amber-400/80 mb-1">
+            {match.is_home_team
+              ? "You are the home team. Create the private lobby."
+              : isAdmin
+              ? "Room code (admin view)."
+              : "You are the away team. Join the private lobby."}
+          </p>
           <p className="text-lg font-mono font-bold tracking-widest text-amber-300">{match.room_code}</p>
         </div>
       )}
-      {hasOpponent && !match.is_home_team && (
-        <p className="mb-4 text-xs text-slate-500">You are the away team. Wait for the home team to share the room code.</p>
+      {hasOpponent && !match.room_code && !match.is_home_team && !isAdmin && (
+        <p className="mb-4 text-xs text-slate-500">You are the away team. Waiting for the home team to set the room code.</p>
       )}
       {!hasOpponent && (
         <p className="mb-4 text-xs text-slate-500">Waiting for your opponent to be decided from the previous match.</p>

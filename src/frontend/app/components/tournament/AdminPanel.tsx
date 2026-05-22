@@ -70,6 +70,8 @@ interface AdminTournament {
 interface GameMap {
   game_number: number;
   stage_name: string | null;
+  mode_id?: string | null;
+  mode_name?: string | null;
 }
 
 interface RoundSchedule {
@@ -721,6 +723,7 @@ export default function AdminPanel({
   const [newAffectsRating, setNewAffectsRating] = useState(true);
   const [creating, setCreating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [ending, setEnding] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; label: string; danger: boolean; action: () => void } | null>(null);
 
   const flash = (text: string, ok: boolean) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
@@ -976,6 +979,26 @@ export default function AdminPanel({
     }
   };
 
+  const endTournament = () => {
+    setConfirmModal({
+      message: `End "${tournament.name}"? This will award tournament wins to the final-match winner and lock the results.`,
+      label: "End Tournament",
+      danger: false,
+      action: async () => {
+        setEnding(true);
+        try {
+          const { data } = await axios.post(`${API_URL}/api/admin/tournament/end`, { guild_id: GUILD_ID }, { withCredentials: true });
+          flash(data.message, data.ok);
+          if (data.ok) onCancel();
+        } catch {
+          flash("Failed to end tournament.", false);
+        } finally {
+          setEnding(false);
+        }
+      },
+    });
+  };
+
   const cancelTournament = () => {
     setConfirmModal({
       message: `Cancel "${tournament.name}"? This cannot be undone.`,
@@ -1029,6 +1052,15 @@ export default function AdminPanel({
             className="text-xs px-3 py-1.5 rounded border border-slate-600 text-slate-300 hover:border-slate-400"
           >
             New Tournament
+          </button>
+        )}
+        {tournament.id !== 0 && tournament.status === "active" && (
+          <button
+            onClick={endTournament}
+            disabled={ending}
+            className="text-xs px-3 py-1.5 rounded border border-green-700/50 text-green-400 hover:border-green-600 disabled:opacity-50"
+          >
+            {ending ? "Ending…" : "End Tournament 🏆"}
           </button>
         )}
         {tournament.id !== 0 && (
@@ -1217,12 +1249,12 @@ export function RoundScheduleSection({ tournamentId, signupCount, teamSize, init
       const { data } = await axios.get(`${API_URL}/api/tournament`, { params: { id: tournamentId } });
       const r: number = data.rounds?.length ?? 0;
       setRounds(r);
-      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string; best_of?: number; games?: { game_number: number; stage_name: string | null }[] } }) => {
+      const existing: RoundMapMode[] = (data.rounds ?? []).map((rd: { round: number; schedule?: { stage_name?: string; mode_id?: string; mode_name?: string; best_of?: number; games?: { game_number: number; stage_name: string | null; mode_id?: string | null; mode_name?: string | null }[] } }) => {
         const bestOf = (rd.schedule?.best_of ?? 1) as 1 | 3 | 5 | 7;
-        const rawGames: { game_number: number; stage_name: string | null }[] = rd.schedule?.games ?? [];
+        const rawGames = rd.schedule?.games ?? [];
         const game_maps = Array.from({ length: bestOf }, (_, i) => {
           const existing = rawGames.find((g) => g.game_number === i + 1);
-          return { game_number: i + 1, stage_name: existing?.stage_name ?? null };
+          return { game_number: i + 1, stage_name: existing?.stage_name ?? null, mode_id: existing?.mode_id ?? null, mode_name: existing?.mode_name ?? null };
         });
         return {
           round: rd.round,
@@ -1250,7 +1282,7 @@ export function RoundScheduleSection({ tournamentId, signupCount, teamSize, init
           mode_id: r.mode?.id ?? null,
           mode_name: r.mode?.name ?? null,
           best_of: r.best_of ?? 1,
-          game_maps: (r.game_maps ?? []).map((g) => ({ game_number: g.game_number, stage_name: g.stage_name })),
+          game_maps: (r.game_maps ?? []).map((g) => ({ game_number: g.game_number, stage_name: g.stage_name, mode_id: g.mode_id ?? null, mode_name: g.mode_name ?? null })),
         })),
       };
       const { data } = await axios.post(`${API_URL}/api/tournament/admin/schedule`, payload, { withCredentials: true });
@@ -1508,8 +1540,12 @@ export interface ProfileRow {
   rank_name: string;
   rank_emoji: string;
   rating: number;
+  trueskill_mu: number;
+  trueskill_sigma: number;
   matches_won: number;
   matches_lost: number;
+  games_won: number;
+  games_lost: number;
   win_rate: number;
   tournament_wins: number;
   tournaments_played: number;
@@ -1530,6 +1566,7 @@ export function PlayerProfilesSection() {
   const [discordInfo, setDiscordInfo] = useState<Record<number, { discord_id: string; username: string; avatar_url: string | null }>>({});
   const [discordLookupLoading, setDiscordLookupLoading] = useState<Record<number, boolean>>({});
   const discordLookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const [winAdjusting, setWinAdjusting] = useState<Record<number, boolean>>({});
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -1650,6 +1687,28 @@ export function PlayerProfilesSection() {
     }
   }, []);
 
+  const adjustTournamentWins = async (playerId: number, delta: 1 | -1) => {
+    setWinAdjusting((prev) => ({ ...prev, [playerId]: true }));
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/admin/player/${playerId}/tournament-wins`,
+        { delta },
+        { withCredentials: true }
+      );
+      if (data.ok) {
+        setProfiles((prev) =>
+          prev.map((p) =>
+            p.id === playerId
+              ? { ...p, tournament_wins: Math.max(0, p.tournament_wins + delta) }
+              : p
+          )
+        );
+      }
+    } finally {
+      setWinAdjusting((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+    }
+  };
+
   return (
     <div className="mt-4 border-t border-slate-700/40 pt-4">
       <button
@@ -1696,8 +1755,10 @@ export function PlayerProfilesSection() {
                     <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Twitch</th>
                     <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Actual Rank</th>
                     <th className="text-left px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Predicted Rank</th>
-                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">W/L</th>
-                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Tourneys</th>
+                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Rating</th>
+                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Series W/L</th>
+                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Games W/L</th>
+                    <th className="text-right px-3 py-2 text-slate-500 font-semibold uppercase tracking-wide">Trophy Wins</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1885,12 +1946,37 @@ export function PlayerProfilesSection() {
                         </select>
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
+                        <div className="text-purple-300 font-mono font-semibold">{p.rating}</div>
+                        <div className="text-[10px] text-slate-600">μ{p.trueskill_mu?.toFixed(1)} σ{p.trueskill_sigma?.toFixed(1)}</div>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
                         <span className="text-green-400">{p.matches_won}</span>
                         <span className="text-slate-600 mx-0.5">/</span>
                         <span className="text-red-400/80">{p.matches_lost}</span>
                       </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        <span className="text-green-400/80">{p.games_won ?? 0}</span>
+                        <span className="text-slate-600 mx-0.5">/</span>
+                        <span className="text-red-400/60">{p.games_lost ?? 0}</span>
+                      </td>
                       <td className="px-3 py-2 text-right">
-                        {p.tournament_wins > 0 ? <span className="text-yellow-400">{p.tournament_wins} 🏆</span> : <span className="text-slate-600">{p.tournaments_played}</span>}
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            disabled={winAdjusting[p.id]}
+                            onClick={() => adjustTournamentWins(p.id, -1)}
+                            className="w-5 h-5 rounded bg-slate-700 hover:bg-red-900/60 text-slate-400 hover:text-red-300 disabled:opacity-40 flex items-center justify-center text-xs font-bold transition-colors"
+                            title="Retract win"
+                          >−</button>
+                          <span className={`min-w-[1.5rem] text-center font-semibold tabular-nums ${p.tournament_wins > 0 ? "text-yellow-400" : "text-slate-600"}`}>
+                            {p.tournament_wins}
+                          </span>
+                          <button
+                            disabled={winAdjusting[p.id]}
+                            onClick={() => adjustTournamentWins(p.id, 1)}
+                            className="w-5 h-5 rounded bg-slate-700 hover:bg-green-900/60 text-slate-400 hover:text-green-300 disabled:opacity-40 flex items-center justify-center text-xs font-bold transition-colors"
+                            title="Award win"
+                          >+</button>
+                        </div>
                       </td>
                     </tr>
                   ))}

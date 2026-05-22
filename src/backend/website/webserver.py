@@ -189,6 +189,10 @@ class WebServer:
             "/api/admin/discord-lookup", self.sneaky_api.admin_discord_lookup)
         self.app.router.add_post(
             "/api/admin/player/{player_id}/twitch-native/toggle", self.sneaky_api.admin_toggle_twitch_native)
+        self.app.router.add_post(
+            "/api/admin/player/{player_id}/tournament-wins", self.sneaky_api.admin_adjust_tournament_wins)
+        self.app.router.add_post(
+            "/api/admin/tournament/end", self.sneaky_api.admin_end_tournament)
 
         logger.debug("Static directory: %s", self.static_dir)
         assets_dir = os.path.join(self.static_dir, "assets")

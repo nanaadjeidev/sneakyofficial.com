@@ -112,6 +112,16 @@ class ProfileExt(interactions.Extension):
         colour = 0x2ecc71 if ok else 0xe74c3c
         await ctx.send(embed=_embed("Twitch Linked" if ok else "❌ Error", msg, colour), ephemeral=True)
 
+    @profile.subcommand(
+        sub_cmd_name="link",
+        sub_cmd_description="Link your Discord to an existing Twitch signup profile",
+    )
+    @slash_option(name="twitch", description="Your Twitch username (the one you used to sign up)", required=True, opt_type=OptionType.STRING)
+    async def profile_link(self, ctx: interactions.SlashContext, twitch: str) -> None:
+        ok, msg = await ProfileManager.link_discord_to_twitch_profile(ctx.author_id, twitch)
+        colour = 0x2ecc71 if ok else 0xe74c3c
+        await ctx.send(embed=_embed("Discord Linked 🎉" if ok else "❌ Error", msg, colour), ephemeral=True)
+
     # ------------------------------------------------------------------ #
     #  /rank                                                               #
     # ------------------------------------------------------------------ #

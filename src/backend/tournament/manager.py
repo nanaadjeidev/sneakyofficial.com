@@ -56,8 +56,7 @@ async def _ensure_match_games_table(cur) -> None:
 
 
 async def _ensure_round_games_match_id(cur) -> None:
-    """Add match_id column to tournament_round_games for per-match map storage.
-    0 = round-level (schedule), non-zero = match-specific counterpick."""
+    """Add match_id/mode columns to tournament_round_games as needed."""
     try:
         await cur.execute(
             "ALTER TABLE tournament_round_games ADD COLUMN match_id INT NOT NULL DEFAULT 0 AFTER round"
@@ -73,6 +72,12 @@ async def _ensure_round_games_match_id(cur) -> None:
     except Exception as e:
         if "Duplicate key name" not in str(e) and "duplicate key" not in str(e).lower():
             raise
+    for col, definition in [("mode_id", "VARCHAR(30)"), ("mode_name", "VARCHAR(50)")]:
+        try:
+            await cur.execute(f"ALTER TABLE tournament_round_games ADD COLUMN {col} {definition}")
+        except Exception as e:
+            if "Duplicate column name" not in str(e):
+                raise
 
 
 async def _ensure_map_pools_table(cur) -> None:
@@ -241,7 +246,7 @@ class TournamentManager:
             await _ensure_round_games_match_id(cur)
             # Fetch both round-level (match_id=0) and match-specific rows; prefer match-specific
             await cur.execute(
-                "SELECT game_number, stage_name, match_id FROM tournament_round_games "
+                "SELECT game_number, stage_name, mode_id, mode_name, match_id FROM tournament_round_games "
                 "WHERE tournament_id = %s AND round = %s AND match_id IN (0, %s) ORDER BY game_number, match_id DESC",
                 (match["tournament_id"], match["round"], match_id)
             )
@@ -251,7 +256,7 @@ class TournamentManager:
             games = []
             for r in game_rows:
                 if r["game_number"] not in seen:
-                    games.append({"game_number": r["game_number"], "stage_name": r["stage_name"]})
+                    games.append({"game_number": r["game_number"], "stage_name": r["stage_name"], "mode_id": r["mode_id"], "mode_name": r["mode_name"]})
                     seen.add(r["game_number"])
 
             teams = [await TournamentManager._fetch_team(cur, tid) for tid in [match["team1_id"], match["team2_id"]]]
@@ -259,7 +264,9 @@ class TournamentManager:
         scores = TournamentManager.get_game_score(match_id)
         best_of = schedule["best_of"] if schedule and schedule.get("best_of") else 1
         current_game = scores[0] + scores[1] + 1
-        current_stage = next((g["stage_name"] for g in games if g["game_number"] == current_game), None)
+        current_game_data = next((g for g in games if g["game_number"] == current_game), None)
+        current_stage = current_game_data["stage_name"] if current_game_data else None
+        current_mode = (current_game_data["mode_name"] if current_game_data and current_game_data.get("mode_name") else None) or (schedule["mode_name"] if schedule else None)
         return {
             "match_id": match_id,
             "round": match["round"],
@@ -272,7 +279,7 @@ class TournamentManager:
             "team2_games": scores[1],
             "best_of": best_of,
             "stage_name": current_stage,
-            "mode_name": schedule["mode_name"] if schedule else None,
+            "mode_name": current_mode,
             "games": games,
             "game_results": TournamentManager.get_game_results(match_id),
         }
@@ -418,9 +425,9 @@ class TournamentManager:
                 )
                 profile = await cur.fetchone()
                 if not profile or not profile[0]:
-                    return False, "You need a Splatoon tag to sign up. Use !splattag YourName#1234 in chat first."
+                    return False, "You need a Splatoon tag first — type !splattag YourName#1234 then !in again."
                 if not profile[1]:
-                    return False, "You need to link your Discord account to sign up. Join our Discord and use /profile twitch to link up."
+                    return False, f"Almost there! Join our Discord ({global_config.discord_invite}) then do /profile link twitch:{twitch_username} — then !in again."
                 await cur.execute(
                     "UPDATE player_profiles SET twitch_native = TRUE WHERE LOWER(twitch_username) = LOWER(%s)",
                     (twitch_username,)
@@ -766,8 +773,6 @@ class TournamentManager:
                 match["player_team_id"] = team_id
                 match["opposing_team_id"] = match["team2_id"] if team_id == match["team1_id"] else match["team1_id"]
                 match["is_home_team"] = match["home_team_id"] == team_id
-                if not match["is_home_team"]:
-                    match["room_code"] = None  # away team never sees the code
 
                 # Fetch round schedule (mode + best_of)
                 await cur.execute(
@@ -795,7 +800,7 @@ class TournamentManager:
                 # Fetch game stages: round-level defaults AND match-specific overrides (override wins)
                 await _ensure_round_games_match_id(cur)
                 await cur.execute(
-                    """SELECT game_number, stage_name, match_id FROM tournament_round_games
+                    """SELECT game_number, stage_name, mode_id, mode_name, match_id FROM tournament_round_games
                        WHERE tournament_id = %s AND round = %s AND (match_id = 0 OR match_id = %s)
                        ORDER BY game_number ASC, match_id DESC""",
                     (tournament_id, match["round"], match["id"])
@@ -805,7 +810,7 @@ class TournamentManager:
                 games: list[dict] = []
                 for g in game_rows:
                     if g["game_number"] not in seen_games:
-                        games.append({"game_number": g["game_number"], "stage_name": g["stage_name"]})
+                        games.append({"game_number": g["game_number"], "stage_name": g["stage_name"], "mode_id": g["mode_id"], "mode_name": g["mode_name"]})
                         seen_games.add(g["game_number"])
                 match["games"] = games
 
@@ -1017,19 +1022,14 @@ class TournamentManager:
             name_row = await cur.fetchone()
             winner_name = name_row[0] if name_row else "Unknown"
 
-            # Check if tournament is now complete (final match done)
-            await cur.execute(
-                "SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
-                (tournament_id,)
-            )
-            remaining = (await cur.fetchone())[0]
-            if not remaining:
-                await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
+            # Tournament completion is triggered explicitly by admin via admin_end_tournament
 
         # Update TrueSkill ratings asynchronously (non-blocking, best-effort)
         skipped_players: list[str] = []
         try:
-            skipped_players = await _get_profile_manager().update_trueskill_for_match(match_id, winner_team_id)
+            skipped_players = await _get_profile_manager().update_trueskill_for_match(
+                match_id, winner_team_id, winner_games=1, loser_games=0
+            )
         except Exception as e:
             logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
 
@@ -1237,12 +1237,7 @@ class TournamentManager:
                 )
                 await TournamentManager._advance_winner(cur, tournament_id, rnd, match_num, series_winner_id)
 
-                await cur.execute(
-                    "SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
-                    (tournament_id,)
-                )
-                if not (await cur.fetchone())[0]:
-                    await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
+                # Don't auto-complete the tournament — admin must press "End Tournament"
 
                 await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (series_winner_id,))
                 name_row = await cur.fetchone()
@@ -1254,8 +1249,13 @@ class TournamentManager:
                 winner_name = None
 
         if series_complete:
+            series_loser_id = team2_id if series_winner_id == team1_id else team1_id
+            winner_g = t1_wins if series_winner_id == team1_id else t2_wins
+            loser_g  = t2_wins if series_winner_id == team1_id else t1_wins
             try:
-                await _get_profile_manager().update_trueskill_for_match(match_id, series_winner_id)
+                await _get_profile_manager().update_trueskill_for_match(
+                    match_id, series_winner_id, winner_games=winner_g, loser_games=loser_g
+                )
             except Exception as e:
                 logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
 
@@ -1697,13 +1697,6 @@ class TournamentManager:
             )
             await TournamentManager._advance_winner(cur, tournament_id, rnd, match_num, winner_team_id)
 
-            await cur.execute(
-                "SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
-                (tournament_id,)
-            )
-            if not (await cur.fetchone())[0]:
-                await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
-
             await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (winner_team_id,))
             name_row = await cur.fetchone()
         from backend.util.broadcaster import TournamentBroadcaster
@@ -1715,6 +1708,38 @@ class TournamentManager:
             "winner_name": name_row[0] if name_row else None,
         })
         return True, f"Match completed. **{name_row[0] if name_row else 'Winner'}** advances!"
+
+    @staticmethod
+    async def admin_end_tournament(guild_id: int) -> tuple[bool, str]:
+        """Mark the active tournament as complete and credit tournament wins to the final-match winner."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT id, name, affects_rating FROM tournaments WHERE guild_id = %s AND status = 'active' ORDER BY created_at DESC LIMIT 1",
+                (guild_id,)
+            )
+            t = await cur.fetchone()
+            if not t:
+                return False, "No active tournament to end."
+            tournament_id, name, affects_rating = t["id"], t["name"], bool(t["affects_rating"])
+
+            # Find the final-match winner (highest round, complete match with a winner)
+            await cur.execute(
+                """SELECT winner_id FROM tournament_matches
+                   WHERE tournament_id = %s AND status = 'complete' AND winner_id IS NOT NULL
+                   ORDER BY round DESC LIMIT 1""",
+                (tournament_id,)
+            )
+            row = await cur.fetchone()
+            winner_team_id = row["winner_id"] if row else None
+
+            await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
+
+        if winner_team_id:
+            await _get_profile_manager()._check_tournament_winner(tournament_id, winner_team_id, affects_rating=affects_rating)
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({"event": "tournament_complete", "tournament_id": tournament_id})
+        return True, f"Tournament **{name}** ended. 🏆"
 
     @staticmethod
     async def admin_revert_match(match_id: int) -> tuple[bool, str]:
@@ -1774,13 +1799,19 @@ class TournamentManager:
         TournamentManager._game_scores.pop(match_id, None)
         TournamentManager._game_results.pop(match_id, None)
 
+        # Revert TrueSkill ratings to pre-match snapshot (best-effort)
+        try:
+            await _get_profile_manager().revert_trueskill_for_match(match_id)
+        except Exception as e:
+            logger.warning("TrueSkill revert failed for match %s: %s", match_id, e)
+
         from backend.util.broadcaster import TournamentBroadcaster
         await TournamentBroadcaster.get().broadcast({
             "event": "match_reverted",
             "tournament_id": tournament_id,
             "match_id": match_id,
         })
-        return True, "Match reverted to pending. All game results cleared."
+        return True, "Match reverted to pending. All game results and rating changes undone."
 
     # ------------------------------------------------------------------ #
     #  Data retrieval                                                      #
@@ -1929,13 +1960,13 @@ class TournamentManager:
             }
 
             await cur.execute(
-                "SELECT round, game_number, stage_name FROM tournament_round_games WHERE tournament_id = %s ORDER BY round, game_number",
+                "SELECT round, game_number, stage_name, mode_id, mode_name FROM tournament_round_games WHERE tournament_id = %s ORDER BY round, game_number",
                 (tournament_id,)
             )
             game_rows = await cur.fetchall()
             games_by_round: dict[int, list] = {}
             for gr in game_rows:
-                games_by_round.setdefault(gr["round"], []).append({"game_number": gr["game_number"], "stage_name": gr["stage_name"]})
+                games_by_round.setdefault(gr["round"], []).append({"game_number": gr["game_number"], "stage_name": gr["stage_name"], "mode_id": gr["mode_id"], "mode_name": gr["mode_name"]})
 
             for rnd, sched in schedule.items():
                 sched["games"] = games_by_round.get(rnd, [])
