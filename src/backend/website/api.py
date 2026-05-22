@@ -580,6 +580,38 @@ class SneakyApi:
         ok, msg = await TournamentManager.admin_set_game_result(match_id, game_number, winner_team_id)
         return web.json_response({"ok": ok, "message": msg})
 
+    @verify_tournament_admin
+    async def tournament_admin_get_map_pool(self, request: Request, admin_id: int) -> web.Response:
+        """Return the map pool (allowed stages per mode) for the current tournament."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"error": "Missing guild_id"}, status=400)
+        tournament = await TournamentManager.get_active_tournament(int(guild_id_param))
+        if not tournament:
+            tournament = await TournamentManager.get_recent_completed_tournament(int(guild_id_param))
+        if not tournament:
+            return web.json_response({"pool": {}})
+        pool = await TournamentManager.get_map_pool(tournament["id"])
+        return web.json_response({"tournament_id": tournament["id"], "pool": pool})
+
+    @verify_tournament_admin
+    async def tournament_admin_set_map_pool(self, request: Request, admin_id: int) -> web.Response:
+        """Set allowed stages per mode for a tournament."""
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            pool = body["pool"]
+            if not isinstance(pool, dict):
+                raise ValueError()
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            await TournamentManager.set_map_pool(tournament_id, pool)
+            return web.json_response({"ok": True, "message": "Map pool saved."})
+        except Exception:
+            logger.exception("tournament_admin_set_map_pool failed")
+            return web.json_response({"ok": False, "message": "Failed to save map pool."})
+
     async def serve_overlay_upnext(self, request: Request) -> web.Response:
         """Return the next pending (unpinned) match for the 'up next' overlay."""
         guild_id_param = request.rel_url.query.get("guild_id")

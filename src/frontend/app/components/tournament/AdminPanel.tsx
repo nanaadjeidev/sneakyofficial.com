@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
 import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
-import { STAGES } from "./splatoonData";
+import { STAGES, MODES } from "./splatoonData";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
@@ -1140,6 +1140,10 @@ export default function AdminPanel({
         />
       )}
 
+      {tournament.id !== 0 && (
+        <MapPoolSection tournamentId={tournament.id} />
+      )}
+
       <PlayerProfilesSection />
     </div>
     </>
@@ -1261,6 +1265,182 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
             className="mt-3 px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
           >
             {saving ? "Saving…" : "Save Schedule"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Map pool section ---------------------------------------------------
+
+function MapPoolSection({ tournamentId }: { tournamentId: number }) {
+  const [open, setOpen] = useState(false);
+  const [activeMode, setActiveMode] = useState(MODES[0].id);
+  // pool: mode_id → Set of allowed stage names (empty Set = all allowed)
+  const [pool, setPool] = useState<Record<string, Set<string>>>({});
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const load = useCallback(async () => {
+    if (loaded) return;
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament/admin/map-pool`, {
+        params: { guild_id: GUILD_ID },
+        withCredentials: true,
+      });
+      const loaded_pool: Record<string, Set<string>> = {};
+      for (const [modeId, stages] of Object.entries(data.pool ?? {})) {
+        loaded_pool[modeId] = new Set(stages as string[]);
+      }
+      setPool(loaded_pool);
+      setLoaded(true);
+    } catch { /* ignore */ }
+  }, [loaded]);
+
+  const toggle = (modeId: string, stageName: string) => {
+    setPool((prev) => {
+      const cur = new Set(prev[modeId] ?? []);
+      if (cur.has(stageName)) cur.delete(stageName); else cur.add(stageName);
+      return { ...prev, [modeId]: cur };
+    });
+  };
+
+  const selectAll = (modeId: string) => {
+    setPool((prev) => ({ ...prev, [modeId]: new Set(STAGES.map((s) => s.name)) }));
+  };
+
+  const clearAll = (modeId: string) => {
+    setPool((prev) => ({ ...prev, [modeId]: new Set() }));
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const serialized: Record<string, string[]> = {};
+      for (const [modeId, stages] of Object.entries(pool)) {
+        if (stages.size > 0) serialized[modeId] = [...stages];
+      }
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/map-pool`,
+        { tournament_id: tournamentId, pool: serialized },
+        { withCredentials: true }
+      );
+      setMsg({ text: data.message, ok: data.ok });
+      setTimeout(() => setMsg(null), 3500);
+    } catch {
+      setMsg({ text: "Failed to save.", ok: false });
+      setTimeout(() => setMsg(null), 3500);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const currentAllowed = pool[activeMode] ?? new Set<string>();
+  const modeData = MODES.find((m) => m.id === activeMode);
+
+  return (
+    <div className="mt-4 border-t border-slate-700/40 pt-4">
+      <button
+        onClick={() => { setOpen((o) => !o); if (!open) load(); }}
+        className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+      >
+        <MapIcon className="w-4 h-4" />
+        <span className="font-medium">Map Pool</span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+
+      {open && (
+        <div className="mt-3">
+          <p className="text-xs text-slate-500 mb-3">
+            Select which stages are allowed for each mode. If none are selected for a mode, all stages are available.
+          </p>
+
+          {msg && (
+            <div className={`mb-3 text-xs px-3 py-2 rounded ${msg.ok ? "bg-green-900/40 text-green-300 border border-green-700/40" : "bg-red-900/40 text-red-300 border border-red-700/40"}`}>
+              {msg.text}
+            </div>
+          )}
+
+          {/* Mode tabs */}
+          <div className="flex flex-wrap gap-1 mb-3">
+            {MODES.map((m) => {
+              const cnt = pool[m.id]?.size ?? 0;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setActiveMode(m.id)}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    activeMode === m.id
+                      ? "bg-purple-600 text-white"
+                      : "bg-slate-700/60 text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <img src={m.icon} alt="" className="w-3.5 h-3.5 object-contain" />
+                  {m.name}
+                  {cnt > 0 && (
+                    <span className="text-[10px] opacity-70">({cnt})</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Per-mode controls */}
+          <div className="flex items-center gap-2 mb-2">
+            {modeData && (
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <img src={modeData.icon} alt="" className="w-3.5 h-3.5 object-contain" />
+                {modeData.name}
+              </span>
+            )}
+            <span className="text-xs text-slate-600 ml-auto">
+              {currentAllowed.size === 0 ? "All stages allowed" : `${currentAllowed.size} selected`}
+            </span>
+            <button onClick={() => selectAll(activeMode)} className="text-[10px] text-slate-500 hover:text-purple-400 underline">
+              All
+            </button>
+            <button onClick={() => clearAll(activeMode)} className="text-[10px] text-slate-500 hover:text-red-400 underline">
+              None
+            </button>
+          </div>
+
+          {/* Stage grid */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5 mb-3">
+            {STAGES.map((stage) => {
+              const selected = currentAllowed.has(stage.name);
+              return (
+                <button
+                  key={stage.name}
+                  onClick={() => toggle(activeMode, stage.name)}
+                  className={`relative rounded-lg overflow-hidden border-2 transition-all text-left ${
+                    selected
+                      ? "border-purple-500 ring-1 ring-purple-500/30"
+                      : "border-slate-700/50 opacity-50 hover:opacity-80 hover:border-slate-500"
+                  }`}
+                >
+                  <img src={stage.image} alt={stage.name} className="w-full h-10 object-cover" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                  <span className="absolute bottom-0.5 left-1 right-1 text-[9px] font-semibold text-white leading-tight truncate">
+                    {stage.name}
+                  </span>
+                  {selected && (
+                    <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center">
+                      <Check className="w-2.5 h-2.5 text-white" />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save Map Pool"}
           </button>
         </div>
       )}

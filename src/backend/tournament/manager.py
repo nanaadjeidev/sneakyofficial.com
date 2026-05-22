@@ -74,6 +74,19 @@ async def _ensure_round_games_match_id(cur) -> None:
         if "Duplicate key name" not in str(e) and "duplicate key" not in str(e).lower():
             raise
 
+
+async def _ensure_map_pools_table(cur) -> None:
+    """Create tournament_map_pools for per-mode stage restrictions."""
+    await cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournament_map_pools (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          tournament_id INT NOT NULL,
+          mode_id VARCHAR(50) NOT NULL,
+          stage_name VARCHAR(100) NOT NULL,
+          UNIQUE KEY uq_pool (tournament_id, mode_id, stage_name)
+        )
+    """)
+
 ADJECTIVES = [
     "Booyah", "Fresh", "Inky", "Radical", "Sneaky", "Fierce", "Elite",
     "Turbo", "Blazing", "Oceanic", "Deadly", "Tactical", "Grizzco", "Anarchy",
@@ -754,6 +767,19 @@ class TournamentManager:
                 sched = await cur.fetchone()
                 match["schedule"] = dict(sched) if sched else None
                 best_of = sched["best_of"] if sched and sched.get("best_of") else 1
+
+                # Fetch allowed stages for this match's mode from map pool
+                mode_id = sched["mode_id"] if sched and sched.get("mode_id") else None
+                if mode_id:
+                    await _ensure_map_pools_table(cur)
+                    await cur.execute(
+                        "SELECT stage_name FROM tournament_map_pools WHERE tournament_id = %s AND mode_id = %s",
+                        (tournament_id, mode_id)
+                    )
+                    pool_rows = await cur.fetchall()
+                    match["allowed_stages"] = [r["stage_name"] for r in pool_rows]
+                else:
+                    match["allowed_stages"] = []
 
                 # Fetch game stages: round-level defaults AND match-specific overrides (override wins)
                 await _ensure_round_games_match_id(cur)
@@ -1692,6 +1718,35 @@ class TournamentManager:
             )
             rows = await cur.fetchall()
             return [dict(r) for r in rows]
+
+    @staticmethod
+    async def get_map_pool(tournament_id: int) -> dict:
+        """Return {mode_id: [stage_names]} for the given tournament. Empty dict if no pool set."""
+        async with DBContextManager(use_dict=True) as cur:
+            await _ensure_map_pools_table(cur)
+            await cur.execute(
+                "SELECT mode_id, stage_name FROM tournament_map_pools WHERE tournament_id = %s ORDER BY mode_id, stage_name",
+                (tournament_id,)
+            )
+            rows = await cur.fetchall()
+        pool: dict = {}
+        for row in rows:
+            pool.setdefault(row["mode_id"], []).append(row["stage_name"])
+        return pool
+
+    @staticmethod
+    async def set_map_pool(tournament_id: int, pool: dict) -> None:
+        """Replace the map pool for a tournament. pool = {mode_id: [stage_names]}."""
+        async with DBContextManager(use_dict=True) as cur:
+            await _ensure_map_pools_table(cur)
+            await cur.execute("DELETE FROM tournament_map_pools WHERE tournament_id = %s", (tournament_id,))
+            for mode_id, stages in pool.items():
+                for stage in stages:
+                    if stage:
+                        await cur.execute(
+                            "INSERT IGNORE INTO tournament_map_pools (tournament_id, mode_id, stage_name) VALUES (%s, %s, %s)",
+                            (tournament_id, mode_id, stage)
+                        )
 
     @staticmethod
     async def get_bracket_data(tournament_id: int) -> dict:

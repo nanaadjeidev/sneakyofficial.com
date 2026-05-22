@@ -65,6 +65,7 @@ interface MyMatch {
   needs_counterpick?: boolean;
   opponent_needs_counterpick?: boolean;
   counterpick_game_number?: number | null;
+  allowed_stages?: string[];
 }
 
 const CARD_H  = 84; // estimated match-card height (px) used for gap maths
@@ -896,14 +897,19 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = fals
 
 // ---- Counterpick stage picker ---------------------------------------------
 
-function CounterpickPicker({ gameNumber, isHomePick, onPick, loading }: {
+function CounterpickPicker({ gameNumber, isHomePick, onPick, loading, allowedStages }: {
   gameNumber: number;
   isHomePick: boolean;
   onPick: (stage: string) => void;
   loading: boolean;
+  allowedStages?: string[];
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [confirm, setConfirm] = useState(false);
+
+  const stageList = allowedStages && allowedStages.length > 0
+    ? STAGES.filter((s) => allowedStages.includes(s.name))
+    : STAGES;
 
   return (
     <div>
@@ -915,7 +921,7 @@ function CounterpickPicker({ gameNumber, isHomePick, onPick, loading }: {
       </div>
 
       <div className="grid grid-cols-2 gap-1.5 mb-3 max-h-60 overflow-y-auto pr-0.5">
-        {STAGES.map((stage) => (
+        {stageList.map((stage) => (
           <button
             key={stage.name}
             onClick={() => setSelected(stage.name)}
@@ -1124,6 +1130,7 @@ function MatchReportCard({
             isHomePick={match.counterpick_game_number === 1}
             onPick={(stage) => onCounterpick(match.counterpick_game_number!, stage)}
             loading={loading}
+            allowedStages={match.allowed_stages}
           />
         </div>
       )}
