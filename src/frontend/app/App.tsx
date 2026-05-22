@@ -1,4 +1,5 @@
 import { Routes, Route } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
 import HomePage from "./pages/Home";
 import Developer from "./pages/Developer";
 import Entertainer from "./pages/Entertainer";
@@ -30,8 +31,8 @@ function App() {
       <Route path="/splatdle" element={<Splatdle />} />
       <Route path="/authorised" element={<AuthCallback />} />
       <Route path="/portfolio" element={<DevPortfolio />} />
-      <Route path="/tournament" element={<Tournament />} />
-      <Route path="/tournament/admin" element={<TournamentAdmin />} />
+      <Route path="/tournament" element={<ErrorBoundary><Tournament /></ErrorBoundary>} />
+      <Route path="/tournament/admin" element={<ErrorBoundary><TournamentAdmin /></ErrorBoundary>} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/players" element={<Players />} />
       <Route path="/overlay/match" element={<OverlayMatch />} />

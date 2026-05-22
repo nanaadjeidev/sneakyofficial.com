@@ -193,7 +193,7 @@ function TeamSlot({
         {isRecentWinner && <span className="text-xs">🏆</span>}
         <span className="font-semibold text-sm truncate leading-tight">{team.name}</span>
       </div>
-      <div className="text-xs text-slate-500 mt-0.5 truncate">{team.members.join(", ")}</div>
+      <div className="text-xs text-slate-500 mt-0.5 truncate">{(team.members ?? []).join(", ")}</div>
     </div>
   );
 }
@@ -734,8 +734,8 @@ function TeamModal({ team, rounds, onClose }: { team: Team; rounds: Round[]; onC
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Players</h3>
             <div className="flex flex-col gap-1.5">
               {(team.captain
-                ? [team.captain, ...team.members.filter((m) => m !== team.captain)]
-                : team.members
+                ? [team.captain, ...(team.members ?? []).filter((m) => m !== team.captain)]
+                : (team.members ?? [])
               ).map((m) => {
                 const isCaptain = m === team.captain;
                 return (
@@ -799,7 +799,7 @@ function WinnerBanner({ team }: { team: Team }) {
         Tournament Champion
       </p>
       <p className="text-4xl font-black text-white mb-2">{team.name}</p>
-      <p className="text-sm text-slate-400">{team.members.join(" · ")}</p>
+      <p className="text-sm text-slate-400">{(team.members ?? []).join(" · ")}</p>
     </div>
   );
 }
