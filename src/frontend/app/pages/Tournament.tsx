@@ -897,9 +897,10 @@ function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = fals
 
 // ---- Counterpick stage picker ---------------------------------------------
 
-function CounterpickPicker({ gameNumber, isHomePick, onPick, loading, allowedStages }: {
+function CounterpickPicker({ gameNumber, isHomePick, modeName, onPick, loading, allowedStages }: {
   gameNumber: number;
   isHomePick: boolean;
+  modeName?: string | null;
   onPick: (stage: string) => void;
   loading: boolean;
   allowedStages?: string[];
@@ -911,12 +912,14 @@ function CounterpickPicker({ gameNumber, isHomePick, onPick, loading, allowedSta
     ? STAGES.filter((s) => allowedStages.includes(s.name))
     : STAGES;
 
+  const modeLabel = modeName ? ` (${modeName})` : "";
+
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
         <MapPin className="w-4 h-4 text-purple-400" />
         <span className="text-sm font-semibold text-purple-300">
-          {isHomePick ? `Pick the map for Game ${gameNumber}` : `Your counterpick for Game ${gameNumber}`}
+          {isHomePick ? `Pick the map for Game ${gameNumber}${modeLabel}` : `Your counterpick for Game ${gameNumber}${modeLabel}`}
         </span>
       </div>
 
@@ -1128,6 +1131,7 @@ function MatchReportCard({
           <CounterpickPicker
             gameNumber={match.counterpick_game_number}
             isHomePick={match.counterpick_game_number === 1}
+            modeName={match.schedule?.mode_name}
             onPick={(stage) => onCounterpick(match.counterpick_game_number!, stage)}
             loading={loading}
             allowedStages={match.allowed_stages}

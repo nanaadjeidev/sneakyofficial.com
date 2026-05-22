@@ -622,6 +622,17 @@ class TournamentManager:
             p = _next_power_of_two(num_teams)
             total_rounds = int(math.log2(p))
 
+            # Validate all rounds have a mode assigned
+            await cur.execute(
+                """SELECT DISTINCT round FROM tournament_round_schedule
+                   WHERE tournament_id = %s AND mode_id IS NOT NULL AND round BETWEEN 1 AND %s""",
+                (tid, total_rounds)
+            )
+            scheduled_rounds = {r[0] for r in await cur.fetchall()}
+            missing_rounds = [r for r in range(1, total_rounds + 1) if r not in scheduled_rounds]
+            if missing_rounds:
+                return False, f"Please set a mode for all {total_rounds} rounds before locking. Missing: Round(s) {', '.join(str(r) for r in missing_rounds)}.", []
+
             # Pre-create all match slots for every round
             match_count = p // 2
             for rnd in range(1, total_rounds + 1):
