@@ -849,6 +849,7 @@ function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
 function MatchReportCard({
   match,
   opponentMatchId,
+  schedule,
   loading,
   message,
   onReport,
@@ -857,6 +858,7 @@ function MatchReportCard({
 }: {
   match: MyMatch;
   opponentMatchId?: number | null;
+  schedule?: RoundSchedule | null;
   loading: boolean;
   message: string | null;
   onReport: (result: "win" | "loss") => void;
@@ -896,6 +898,28 @@ function MatchReportCard({
             </span>
         }
       </p>
+
+      {schedule && (schedule.mode_name || schedule.stage_name || schedule.best_of) && (
+        <div className="mb-4 px-3 py-2 rounded-lg bg-slate-800/50 border border-slate-700/50 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-300">
+          {schedule.mode_name && (
+            <span className="flex items-center gap-1 font-medium text-purple-300">
+              {(() => {
+                const modeData = MODES.find((m) => m.id === schedule.mode_id);
+                return modeData?.icon
+                  ? <img src={modeData.icon} alt="" className="w-4 h-4 object-contain" />
+                  : null;
+              })()}
+              {schedule.mode_name}
+            </span>
+          )}
+          {schedule.best_of && schedule.best_of > 1 && (
+            <span className="text-slate-500">Best of {schedule.best_of}</span>
+          )}
+          {schedule.stage_name && (
+            <span className="text-slate-400">Starts on <span className="text-slate-200">{schedule.stage_name}</span></span>
+          )}
+        </div>
+      )}
 
       {hasOpponent && match.is_home_team && match.room_code && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
@@ -1433,6 +1457,7 @@ export default function Tournament() {
           <MatchReportCard
             match={myMatch}
             opponentMatchId={opponentMatchId}
+            schedule={rounds.find((r) => r.round === myMatch.round)?.schedule}
             loading={reportLoading}
             message={reportMsg}
             onReport={handleReport}

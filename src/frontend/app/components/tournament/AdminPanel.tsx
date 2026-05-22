@@ -358,6 +358,7 @@ function AdminMatchReporter({ onRefresh, flash }: {
   const [reporting, setReporting] = useState<number | null>(null);
   const [pinnedId, setPinnedId] = useState<number | null>(null);
   const [scores, setScores] = useState<Record<number, [number, number]>>({});
+  const [mapsOpen, setMapsOpen] = useState<Record<number, boolean>>({});
   // matchId → gameNumber → stageName (local overrides shown after counterpick picks)
   const [gameStages, setGameStages] = useState<Record<number, Record<number, string | null>>>({});
 
@@ -499,9 +500,10 @@ function AdminMatchReporter({ onRefresh, flash }: {
                   <span className="text-[10px] text-slate-600 ml-1">{m.team1?.name} · {m.team2?.name}</span>
                 </div>
 
-                {/* Stage pickers — always shown, slots derived from best_of */}
+                {/* Stage pickers — collapsible */}
                 {(() => {
                   const bestOf = m.schedule?.best_of ?? 1;
+                  const isOpen = mapsOpen[m.id] ?? false;
                   const slots = Array.from({ length: bestOf }, (_, i) => {
                     const gameNum = i + 1;
                     const overrideName = gameStages[m.id]?.[gameNum];
@@ -510,8 +512,14 @@ function AdminMatchReporter({ onRefresh, flash }: {
                   });
                   return (
                     <div className="mb-2 flex flex-col gap-1">
-                      <span className="text-[10px] text-slate-500 uppercase tracking-wide">Maps</span>
-                      {slots.map((gm) => {
+                      <button
+                        onClick={() => setMapsOpen(prev => ({ ...prev, [m.id]: !isOpen }))}
+                        className="flex items-center gap-1 text-[10px] text-slate-500 uppercase tracking-wide hover:text-slate-300 transition-colors"
+                      >
+                        {isOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        Maps
+                      </button>
+                      {isOpen && slots.map((gm) => {
                         const label = gm.game_number === 1
                           ? bestOf === 1 ? "Stage" : "G1 — Home pick"
                           : `G${gm.game_number} — Counterpick`;
