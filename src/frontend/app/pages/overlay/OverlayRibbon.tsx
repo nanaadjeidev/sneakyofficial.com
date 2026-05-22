@@ -57,9 +57,43 @@ function useRibbonKeyframes() {
         from { opacity: 0; transform: translateX(8px); }
         to   { opacity: 1; transform: translateX(0); }
       }
-      .spl-ribbon-in         { animation: splRibbonIn 0.55s cubic-bezier(0.22,1,0.36,1) both; }
-      .spl-ribbon-score-pop  { animation: splRibbonScorePop 0.45s cubic-bezier(0.22,1,0.36,1) both; }
-      .spl-ribbon-stage-slide { animation: splRibbonStageSlide 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+      @keyframes splRibbonIconGlow {
+        0%, 100% { box-shadow: 0 0 10px rgba(145,70,255,0.5), 0 0 28px rgba(145,70,255,0.25); }
+        50%      { box-shadow: 0 0 20px rgba(145,70,255,0.9), 0 0 50px rgba(145,70,255,0.45), 0 0 80px rgba(145,70,255,0.15); }
+      }
+      @keyframes splRibbonShimmer {
+        0%   { background-position: -200% center; }
+        100% { background-position: 200% center; }
+      }
+      @keyframes splRibbonUrlBreathe {
+        0%, 100% { opacity: 0.55; }
+        50%      { opacity: 0.90; }
+      }
+      @keyframes splRibbonScan {
+        0%   { transform: translateX(-100%); opacity: 0; }
+        10%  { opacity: 1; }
+        90%  { opacity: 1; }
+        100% { transform: translateX(100vw); opacity: 0; }
+      }
+      @keyframes splRibbonIdleFadeIn {
+        from { opacity: 0; transform: translateY(6px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+      .spl-ribbon-in           { animation: splRibbonIn 0.55s cubic-bezier(0.22,1,0.36,1) both; }
+      .spl-ribbon-score-pop    { animation: splRibbonScorePop 0.45s cubic-bezier(0.22,1,0.36,1) both; }
+      .spl-ribbon-stage-slide  { animation: splRibbonStageSlide 0.4s cubic-bezier(0.22,1,0.36,1) both; }
+      .spl-ribbon-idle-in      { animation: splRibbonIdleFadeIn 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+      .spl-ribbon-icon-glow    { animation: splRibbonIconGlow 2.8s ease-in-out infinite; }
+      .spl-ribbon-shimmer-text {
+        background: linear-gradient(90deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.85) 35%, rgba(255,255,255,1) 50%, rgba(255,255,255,0.85) 65%, rgba(255,255,255,0.85) 100%);
+        background-size: 200% auto;
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: splRibbonShimmer 3.5s linear infinite;
+      }
+      .spl-ribbon-url-breathe  { animation: splRibbonUrlBreathe 2.4s ease-in-out infinite; }
+      .spl-ribbon-scan         { animation: splRibbonScan 4.5s ease-in-out infinite; }
     `;
     document.head.appendChild(el);
   }, []);
@@ -180,26 +214,95 @@ export default function OverlayRibbon() {
 
   if (!match) {
     return (
-      <div data-overlay style={{
-        width: "100%",
-        height: "100%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(6,6,18,0.88)",
-        backdropFilter: "blur(24px)",
-        WebkitBackdropFilter: "blur(24px)",
-        borderTop: "1px solid rgba(255,255,255,0.07)",
-      }}>
-        <span style={{
-          fontSize: "clamp(8px, 1vw, 11px)",
-          fontWeight: 700,
-          letterSpacing: "0.3em",
-          textTransform: "uppercase",
-          color: "rgba(255,255,255,0.18)",
-        }}>
-          No match pinned
-        </span>
+      <div
+        data-overlay
+        className="spl-ribbon-idle-in"
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "2vw",
+          background: "rgba(6,6,18,0.93)",
+          backdropFilter: "blur(28px) saturate(160%)",
+          WebkitBackdropFilter: "blur(28px) saturate(160%)",
+          borderTop: "1.5px solid rgba(145,70,255,0.35)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        {/* Scan line sweep */}
+        <div
+          className="spl-ribbon-scan"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "8vw",
+            height: "100%",
+            background: "linear-gradient(to right, transparent, rgba(145,70,255,0.12), transparent)",
+            pointerEvents: "none",
+          }}
+        />
+
+        {/* Top accent */}
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 2,
+          background: "linear-gradient(to right, transparent, rgba(145,70,255,0.7) 30%, rgba(145,70,255,0.7) 70%, transparent)",
+          pointerEvents: "none",
+        }} />
+
+        {/* Icon */}
+        <div
+          className="spl-ribbon-icon-glow"
+          style={{
+            width: "clamp(32px, 4.5vh, 52px)",
+            height: "clamp(32px, 4.5vh, 52px)",
+            borderRadius: "50%",
+            overflow: "hidden",
+            border: "2px solid rgba(145,70,255,0.7)",
+            flexShrink: 0,
+          }}
+        >
+          <img
+            src="/android-chrome-512x512.png"
+            alt="sneakyonnightmode"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        </div>
+
+        {/* Name + URL */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.25vh", alignItems: "flex-start" }}>
+          <span
+            className="spl-ribbon-shimmer-text"
+            style={{
+              fontSize: "clamp(14px, 2.4vh, 28px)",
+              fontWeight: 900,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              lineHeight: 1,
+            }}
+          >
+            sneakyonnightmode
+          </span>
+          <span
+            className="spl-ribbon-url-breathe"
+            style={{
+              fontSize: "clamp(9px, 1.4vh, 14px)",
+              fontWeight: 600,
+              color: "rgb(145,70,255)",
+              letterSpacing: "0.04em",
+              lineHeight: 1,
+            }}
+          >
+            twitch.tv/sneakyonnightmode
+          </span>
+        </div>
       </div>
     );
   }
