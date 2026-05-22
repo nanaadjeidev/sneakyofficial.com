@@ -350,7 +350,7 @@ function ConfirmModal({
 
 // ---- Admin match reporter ------------------------------------------------
 
-function AdminMatchReporter({ onRefresh, flash }: {
+export function AdminMatchReporter({ onRefresh, flash }: {
   onRefresh: () => void;
   flash: (text: string, ok: boolean) => void;
 }) {
@@ -936,58 +936,35 @@ export default function AdminPanel({
         onCancel={() => setConfirmModal(null)}
       />
     )}
-    <div className="rounded-xl border border-yellow-500/50 p-4 mb-8" style={{
-      background: "linear-gradient(135deg, rgba(120, 80, 0, 0.28) 0%, rgba(60, 40, 0, 0.22) 50%, rgba(100, 60, 0, 0.26) 100%)",
-      backdropFilter: "blur(28px) saturate(160%)",
-      WebkitBackdropFilter: "blur(28px) saturate(160%)",
-      boxShadow: "inset 0 1.5px 0 rgba(255, 210, 80, 0.18), inset 0 -1px 0 rgba(0,0,0,0.12), 0 12px 40px rgba(0,0,0,0.55), 0 0 0 1px rgba(255, 200, 50, 0.08)",
-    }}>
-      {/* Unsaved changes warning */}
+    <div className="flex flex-col gap-4">
       {isDirty && (
-        <div className="mb-3 flex items-center gap-2 text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-600/40 text-amber-300">
+        <div className="flex items-center gap-2 text-xs px-3 py-2 rounded bg-amber-900/30 border border-amber-600/40 text-amber-300">
           <span>Unsaved changes — click Save Teams to persist.</span>
         </div>
       )}
-      {/* Admin header */}
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Trophy className="w-5 h-5 text-yellow-400" />
-          <span className="font-bold text-yellow-300 text-sm">Admin Panel</span>
-          <span className="text-slate-400 text-xs">- {tournament.name}</span>
-          {tournament.special_rules && (
-            <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-              tournament.affects_rating === false
-                ? "bg-amber-900/30 text-amber-300 border-amber-600/40"
-                : "bg-blue-900/30 text-blue-300 border-blue-600/40"
-            }`}>
-              {tournament.affects_rating === false ? "Special rules · no rating" : "Special rules"}
-            </span>
-          )}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {!showCreate && (
-            <button
-              onClick={() => setShowCreate(true)}
-              className="text-xs px-3 py-1.5 rounded border border-slate-600 text-slate-300 hover:border-slate-400"
-            >
-              New Tournament
-            </button>
-          )}
-          {tournament.id !== 0 && (
-            <button
-              onClick={cancelTournament}
-              disabled={cancelling}
-              className="text-xs px-3 py-1.5 rounded border border-red-700/50 text-red-400 hover:border-red-500 disabled:opacity-50"
-            >
-              {cancelling ? "Cancelling…" : "Cancel Tournament"}
-            </button>
-          )}
-        </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {!showCreate && (
+          <button
+            onClick={() => setShowCreate(true)}
+            className="text-xs px-3 py-1.5 rounded border border-slate-600 text-slate-300 hover:border-slate-400"
+          >
+            New Tournament
+          </button>
+        )}
+        {tournament.id !== 0 && (
+          <button
+            onClick={cancelTournament}
+            disabled={cancelling}
+            className="text-xs px-3 py-1.5 rounded border border-red-700/50 text-red-400 hover:border-red-500 disabled:opacity-50"
+          >
+            {cancelling ? "Cancelling…" : "Cancel Tournament"}
+          </button>
+        )}
       </div>
 
-      {/* Flash message */}
       {msg && (
-        <div className={`mb-3 text-sm px-3 py-2 rounded ${msg.ok ? "bg-green-900/40 text-green-300 border border-green-700/40" : "bg-red-900/40 text-red-300 border border-red-700/40"}`}>
+        <div className={`text-sm px-3 py-2 rounded ${msg.ok ? "bg-green-900/40 text-green-300 border border-green-700/40" : "bg-red-900/40 text-red-300 border border-red-700/40"}`}>
           {msg.text}
         </div>
       )}
@@ -1128,23 +1105,6 @@ export default function AdminPanel({
         </>
       )}
 
-      {tournament.status === "active" && tournament.id !== 0 && (
-        <AdminMatchReporter onRefresh={onRefresh} flash={flash} />
-      )}
-
-      {tournament.id !== 0 && (
-        <RoundScheduleSection
-          tournamentId={tournament.id}
-          signupCount={signups.length}
-          teamSize={teamSize}
-        />
-      )}
-
-      {tournament.id !== 0 && (
-        <MapPoolSection tournamentId={tournament.id} />
-      )}
-
-      <PlayerProfilesSection />
     </div>
     </>
   );
@@ -1152,12 +1112,13 @@ export default function AdminPanel({
 
 // ---- Round schedule panel ------------------------------------------------
 
-function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
+export function RoundScheduleSection({ tournamentId, signupCount, teamSize, initialOpen = false }: {
   tournamentId: number;
   signupCount: number;
   teamSize: number;
+  initialOpen?: boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [rounds, setRounds] = useState(0);
   const [schedule, setSchedule] = useState<RoundMapMode[]>([]);
   const [saving, setSaving] = useState(false);
@@ -1168,6 +1129,8 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
   const [manualRounds, setManualRounds] = useState(estimatedRounds);
 
   const displayRounds = rounds > 0 ? rounds : manualRounds;
+
+  useEffect(() => { if (initialOpen) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (loaded) return;
@@ -1274,14 +1237,16 @@ function RoundScheduleSection({ tournamentId, signupCount, teamSize }: {
 
 // ---- Map pool section ---------------------------------------------------
 
-function MapPoolSection({ tournamentId }: { tournamentId: number }) {
-  const [open, setOpen] = useState(false);
+export function MapPoolSection({ tournamentId, initialOpen = false }: { tournamentId: number; initialOpen?: boolean }) {
+  const [open, setOpen] = useState(initialOpen);
   const [activeMode, setActiveMode] = useState(MODES[0].id);
   // pool: mode_id → Set of allowed stage names (empty Set = all allowed)
   const [pool, setPool] = useState<Record<string, Set<string>>>({});
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  useEffect(() => { if (initialOpen) load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async () => {
     if (loaded) return;
@@ -1471,7 +1436,7 @@ export interface ProfileRow {
   tournaments_played: number;
 }
 
-function PlayerProfilesSection() {
+export function PlayerProfilesSection() {
   const [open, setOpen] = useState(false);
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [loading, setLoading] = useState(false);

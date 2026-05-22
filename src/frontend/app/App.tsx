@@ -8,6 +8,7 @@ import Splatdle from "./pages/Splatdle";
 import AuthCallback from "./pages/Authorised";
 import DevPortfolio from "./pages/DevPortfolio";
 import Tournament from "./pages/Tournament";
+import TournamentAdmin from "./pages/TournamentAdmin";
 import Leaderboard from "./pages/Leaderboard";
 import Players from "./pages/Players";
 import OverlayMatch from "./pages/overlay/OverlayMatch";
@@ -30,6 +31,7 @@ function App() {
       <Route path="/authorised" element={<AuthCallback />} />
       <Route path="/portfolio" element={<DevPortfolio />} />
       <Route path="/tournament" element={<Tournament />} />
+      <Route path="/tournament/admin" element={<TournamentAdmin />} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/players" element={<Players />} />
       <Route path="/overlay/match" element={<OverlayMatch />} />

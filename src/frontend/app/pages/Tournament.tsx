@@ -4,7 +4,7 @@ import { Helmet } from "react-helmet";
 import axios from "axios";
 import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X, History, MapPin } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
-import AdminPanel, { type Signup, type PreTeam } from "../components/tournament/AdminPanel";
+import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { MODES, STAGES } from "../components/tournament/splatoonData";
 
@@ -1230,9 +1230,6 @@ export default function Tournament() {
   const [error, setError]             = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const [adminSignups,    setAdminSignups]    = useState<Signup[]>([]);
-  const [adminPreTeams,   setAdminPreTeams]   = useState<PreTeam[]>([]);
-  const [adminDataLoaded, setAdminDataLoaded] = useState(false);
 
   const [publicSignups,       setPublicSignups]       = useState<PublicSignup[]>([]);
   const [newSignupKeys,       setNewSignupKeys]       = useState<Set<string>>(new Set());
@@ -1253,10 +1250,9 @@ export default function Tournament() {
   const [viewingId,           setViewingId]           = useState<number | null>(null);
   const reportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isAdminRef      = useRef(isAdmin);
-  const fetchAdminDataRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const fetchDataRef      = useRef<(id?: number | null) => Promise<void>>(() => Promise.resolve());
-  isAdminRef.current = !!isAdmin;
+  const isAdminRef    = useRef(isAdmin);
+  const fetchDataRef  = useRef<(id?: number | null) => Promise<void>>(() => Promise.resolve());
+  isAdminRef.current  = !!isAdmin;
 
   const fetchData = useCallback(async (tournamentId?: number | null) => {
     try {
@@ -1291,20 +1287,6 @@ export default function Tournament() {
     } catch { /* non-critical */ }
   }, []);
 
-  const fetchAdminData = useCallback(async () => {
-    if (!GUILD_ID) return;
-    try {
-      const { data: res } = await axios.get(`${API_URL}/api/tournament/admin`, {
-        params: { guild_id: GUILD_ID },
-        withCredentials: true,
-      });
-      setAdminSignups(res.signups ?? []);
-      setAdminPreTeams(res.pre_teams ?? []);
-      setAdminDataLoaded(true);
-    } catch {
-      setAdminDataLoaded(true);
-    }
-  }, []);
 
   const fetchMyMatch = useCallback(async () => {
     if (!GUILD_ID || !loggedIn) return;
@@ -1326,7 +1308,6 @@ export default function Tournament() {
   }, [loggedIn]);
 
   const fetchMyMatchRef = useRef(fetchMyMatch);
-  fetchAdminDataRef.current = fetchAdminData;
   fetchDataRef.current      = fetchData;
   fetchMyMatchRef.current   = fetchMyMatch;
 
@@ -1352,7 +1333,6 @@ export default function Tournament() {
             setPublicSignups((prev) => [...prev, newSignup]);
             setNewSignupKeys((prev) => new Set([...prev, key]));
             setTimeout(() => setNewSignupKeys((prev) => { const next = new Set(prev); next.delete(key); return next; }), 2000);
-            if (isAdminRef.current) fetchAdminDataRef.current();
           } else if (msg.event === "leave") {
             const leaveKey = msg.discord_id ?? msg.twitch_username ?? null;
             if (leaveKey) {
@@ -1376,7 +1356,6 @@ export default function Tournament() {
                 })
               );
             }
-            if (isAdminRef.current) fetchAdminDataRef.current();
           } else if (msg.event === "game_reported" || msg.event === "game_confirmed" || msg.event === "counterpick_set") {
             fetchMyMatchRef.current();
             if (msg.event === "game_confirmed") fetchDataRef.current();
@@ -1413,7 +1392,6 @@ export default function Tournament() {
           } else if (msg.event === "tournament_locked" || msg.event === "tournament_cancelled") {
             fetchDataRef.current();
             fetchMyMatchRef.current();
-            if (isAdminRef.current) fetchAdminDataRef.current();
           }
         } catch { /* ignore malformed messages */ }
       };
@@ -1454,15 +1432,6 @@ export default function Tournament() {
   }, [fetchData, viewingId]);
 
   useEffect(() => {
-    if (isAdmin) {
-      setAdminDataLoaded(false);
-      fetchAdminData();
-      const id = setInterval(fetchAdminData, POLL_MS);
-      return () => clearInterval(id);
-    }
-  }, [isAdmin, fetchAdminData]);
-
-  useEffect(() => {
     if (loggedIn && data?.tournament?.status === "active") {
       fetchMyMatch();
     } else {
@@ -1470,11 +1439,6 @@ export default function Tournament() {
       setPlayerTeamId(null);
     }
   }, [loggedIn, data?.tournament?.status, fetchMyMatch]);
-
-  const handleAdminRefresh = useCallback(() => {
-    fetchData();
-    fetchAdminData();
-  }, [fetchData, fetchAdminData]);
 
   const setMsg = useCallback((msg: string | null) => {
     setReportMsg(msg);
@@ -1560,14 +1524,6 @@ export default function Tournament() {
       setReportLoading(false);
     }
   }, [myMatch, fetchMyMatch, setMsg]);
-
-  const handleAdminCancel = useCallback(() => {
-    setData(null);
-    setAdminSignups([]);
-    setAdminPreTeams([]);
-    fetchData();
-    fetchAdminData();
-  }, [fetchData, fetchAdminData]);
 
   const tournament  = data?.tournament;
   const rounds      = data?.rounds ?? [];
@@ -1713,13 +1669,21 @@ export default function Tournament() {
                 )}
               </div>
             )}
-            {!authLoading && !isAdmin && (
+            {!authLoading && !loggedIn && (
               <a
                 href={`${API_URL}/api/auth/discord/login`}
-                className="text-xs text-slate-500 hover:text-slate-300 flex items-center gap-1"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition-colors"
               >
-                <LogIn className="w-3.5 h-3.5" /> Admin login
+                <LogIn className="w-3.5 h-3.5" /> Log in with Discord
               </a>
+            )}
+            {!authLoading && isAdmin && (
+              <Link
+                to="/tournament/admin"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-yellow-600/40 text-yellow-400 hover:text-yellow-300 hover:border-yellow-500/60 text-xs font-medium transition-colors"
+              >
+                <Trophy className="w-3.5 h-3.5" /> Admin
+              </Link>
             )}
           </div>
         </div>
@@ -1736,18 +1700,6 @@ export default function Tournament() {
             onConfirmGame={handleConfirmGame}
             onDisputeGame={handleDisputeGame}
             onCounterpick={handleCounterpick}
-          />
-        )}
-
-        {/* Admin panel — single stable element; key changes only when the tournament changes */}
-        {isAdmin && adminDataLoaded && (
-          <AdminPanel
-            key={tournament?.id ?? 0}
-            tournament={tournament ?? { id: 0, name: "No active tournament", status: "signup" }}
-            signups={tournament ? adminSignups : []}
-            preTeams={tournament ? adminPreTeams : []}
-            onRefresh={handleAdminRefresh}
-            onCancel={handleAdminCancel}
           />
         )}
 
