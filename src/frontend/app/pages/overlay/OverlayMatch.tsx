@@ -53,6 +53,63 @@ function ScorePip({ filled, win }: { filled: boolean; win: boolean }) {
   );
 }
 
+// ── Inject CSS keyframes for map card entry animation ──────────────────────────
+
+function useMapEnterKeyframes() {
+  useEffect(() => {
+    const id = "spl-map-enter-kf";
+    if (document.getElementById(id)) return;
+    const el = document.createElement("style");
+    el.id = id;
+    el.textContent = `
+      @keyframes splMapEnter {
+        from { opacity: 0; transform: translateY(8%) scale(0.93); }
+        to   { opacity: 1; transform: translateY(0)   scale(1);   }
+      }
+      .spl-map-enter { animation: splMapEnter 0.55s cubic-bezier(0.22,1,0.36,1) both; }
+    `;
+    document.head.appendChild(el);
+  }, []);
+}
+
+// ── Track per-game stage versions to re-key cards on new stage assignment ──────
+
+function useGameStageVersions(games: GameMap[]) {
+  const [versions, setVersions] = useState<Record<number, number>>({});
+  const prevStagesRef = useRef<Record<number, string | null>>({});
+  const initializedRef = useRef(false);
+
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      games.forEach(g => { prevStagesRef.current[g.game_number] = g.stage_name; });
+      return;
+    }
+    let changed = false;
+    const updates: Record<number, number> = {};
+    games.forEach(g => {
+      const prev = prevStagesRef.current[g.game_number] ?? null;
+      if (g.stage_name && g.stage_name !== prev) {
+        changed = true;
+        updates[g.game_number] = 1;
+      }
+      prevStagesRef.current[g.game_number] = g.stage_name;
+    });
+    if (changed) {
+      setVersions(v => {
+        const next = { ...v };
+        Object.keys(updates).forEach(k => {
+          const gn = Number(k);
+          next[gn] = (v[gn] ?? 0) + 1;
+        });
+        return next;
+      });
+    }
+  }, [games]);
+
+  return versions;
+}
+
 // ── Shared data hook ───────────────────────────────────────────────────────────
 
 function useMatchData() {
@@ -201,7 +258,9 @@ function MatchTicker({ pinnedId }: { pinnedId: number }) {
   );
 }
 
-// ── Individual game card (used in full overlay) ────────────────────────────────
+// ── Game card ──────────────────────────────────────────────────────────────────
+// Designed to fill its flex slot in the card row.
+// Winner shown large in the centre. Entry animation via .spl-map-enter on remount.
 
 function GameCard({
   gameNum, match, modeData, currentGame, isMatchOver,
@@ -225,128 +284,152 @@ function GameCard({
 
   return (
     <div
-      className="relative flex-1 rounded-2xl overflow-hidden flex flex-col"
+      className="spl-map-enter relative flex-1 rounded-xl overflow-hidden flex flex-col"
       style={{
         border: isCurrent
-          ? "1.5px solid rgba(239,68,68,0.55)"
+          ? "1.5px solid rgba(239,68,68,0.58)"
           : isCompleted
-          ? "1px solid rgba(255,255,255,0.12)"
-          : "1px solid rgba(255,255,255,0.06)",
-        boxShadow: isCurrent ? "0 0 24px rgba(239,68,68,0.20), 0 4px 20px rgba(0,0,0,0.7)" : "0 4px 20px rgba(0,0,0,0.6)",
-        opacity: isFuture && gameNum > currentGame + 1 ? 0.5 : 1,
+          ? "1px solid rgba(255,255,255,0.13)"
+          : "1px solid rgba(255,255,255,0.05)",
+        boxShadow: isCurrent
+          ? "0 0 28px rgba(239,68,68,0.22), 0 4px 20px rgba(0,0,0,0.7)"
+          : "0 4px 20px rgba(0,0,0,0.6)",
+        opacity: isFuture && gameNum > currentGame + 1 ? 0.42 : 1,
+        minWidth: 0,
       }}
     >
-      {/* ── Background: map image or dark placeholder ── */}
+      {/* Background map image */}
       {stageData ? (
         <img
           src={stageData.image}
           alt={stageName ?? ""}
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ opacity: isCompleted ? 0.55 : isCurrent ? 0.9 : 0.25 }}
+          style={{ opacity: isCompleted ? 0.38 : isCurrent ? 0.88 : 0.18 }}
         />
       ) : (
         <div className="absolute inset-0" style={{ background: "rgba(8,8,20,0.95)" }} />
       )}
 
-      {/* ── Gradient overlay: darken top + bottom ── */}
+      {/* Gradient scrim — darken top + bottom, leave centre clear */}
       <div className="absolute inset-0 pointer-events-none" style={{
-        background: "linear-gradient(to bottom, rgba(0,0,0,0.62) 0%, transparent 28%, transparent 52%, rgba(0,0,0,0.72) 100%)",
+        background: "linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 28%, transparent 58%, rgba(0,0,0,0.80) 100%)",
       }} />
 
-      {/* ── Top bar: "Game N" + mode icon ── */}
-      <div className="relative z-10 flex items-center justify-between px-2.5 pt-2.5 pb-1 shrink-0">
-        <div
-          className="flex items-center gap-1.5 px-2 py-1 rounded-lg"
-          style={{ background: "rgba(0,0,0,0.50)", backdropFilter: "blur(8px)" }}
-        >
-          <span
-            className="text-[10px] font-black tracking-[0.18em] uppercase"
-            style={{ color: isCurrent ? "rgba(239,68,68,0.95)" : isCompleted ? "rgba(255,255,255,0.65)" : "rgba(255,255,255,0.28)" }}
-          >
-            G{gameNum}
-          </span>
-        </div>
-        {modeData && (
+      {/* Top: game label + live dot */}
+      <div className="relative z-10 flex items-center justify-between shrink-0" style={{ padding: "4% 5% 0" }}>
+        <span style={{
+          fontSize: "clamp(8px, 1.6vw, 14px)",
+          fontWeight: 900,
+          letterSpacing: "0.18em",
+          textTransform: "uppercase",
+          color: isCurrent ? "rgba(239,68,68,0.95)" : isCompleted ? "rgba(255,255,255,0.60)" : "rgba(255,255,255,0.22)",
+        }}>
+          G{gameNum}
+        </span>
+        {isCurrent && (
+          <div className="relative shrink-0" style={{ width: "clamp(6px, 1vw, 9px)", height: "clamp(6px, 1vw, 9px)" }}>
+            <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
+            <div className="absolute inset-0 rounded-full bg-red-500" />
+          </div>
+        )}
+        {modeData && !isCurrent && (
           <img
             src={modeData.icon}
             alt={modeData.name}
-            className="w-4 h-4 object-contain shrink-0"
             style={{
-              opacity: isCurrent ? 0.85 : isCompleted ? 0.55 : 0.25,
+              width: "clamp(10px, 1.4vw, 14px)",
+              height: "clamp(10px, 1.4vw, 14px)",
+              objectFit: "contain",
+              opacity: isCompleted ? 0.45 : 0.22,
               filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))",
             }}
           />
         )}
       </div>
 
-      {/* ── Middle: ? placeholder when no stage selected ── */}
-      {!stageData && (
-        <div className="relative z-10 flex-1 flex items-center justify-center">
-          <span className="text-4xl font-thin" style={{ color: "rgba(255,255,255,0.12)" }}>?</span>
-        </div>
-      )}
-      {stageData && <div className="flex-1" />}
-
-      {/* ── Bottom: stage name + winner / LIVE ── */}
-      <div className="relative z-10 flex flex-col items-center pb-2.5 px-2 gap-0.5 shrink-0">
-        {/* Stage name */}
-        <span
-          className="text-[8px] font-medium truncate w-full text-center"
-          style={{ color: "rgba(255,255,255,0.38)" }}
-        >
-          {stageName ?? (isCurrent ? "Counterpick pending…" : "—")}
-        </span>
-
-        {/* Winner overlay */}
-        {isCompleted && winnerName && (
-          <div className="flex flex-col items-center gap-0">
-            <span className="text-[7px] font-bold tracking-[0.15em] uppercase" style={{ color: "rgba(255,255,255,0.40)" }}>
-              won by
+      {/* Centre: winner (large) / LIVE / ? */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center" style={{ padding: "0 6%" }}>
+        {isCompleted && winnerName ? (
+          <div className="flex flex-col items-center gap-[2%] text-center w-full">
+            <span style={{
+              fontSize: "clamp(6px, 0.9vw, 9px)",
+              fontWeight: 700,
+              letterSpacing: "0.24em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,0.38)",
+            }}>
+              WON BY
             </span>
-            <span
-              className="text-[11px] font-black leading-tight truncate w-full text-center"
-              style={{
-                color: winnerIsT1 ? "rgb(110,231,183)" : "rgb(129,140,248)",
-                textShadow: winnerIsT1
-                  ? "0 0 14px rgba(52,211,153,0.85)"
-                  : "0 0 14px rgba(99,102,241,0.85)",
-              }}
-            >
+            <span style={{
+              fontSize: "clamp(11px, 2.5vw, 22px)",
+              fontWeight: 900,
+              lineHeight: 1.1,
+              color: winnerIsT1 ? "rgb(110,231,183)" : "rgb(129,140,248)",
+              textShadow: winnerIsT1
+                ? "0 0 22px rgba(52,211,153,0.95), 0 2px 8px rgba(0,0,0,0.9)"
+                : "0 0 22px rgba(99,102,241,0.95), 0 2px 8px rgba(0,0,0,0.9)",
+              maxWidth: "100%",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
               {winnerName}
             </span>
           </div>
-        )}
+        ) : isCurrent ? (
+          <span style={{
+            fontSize: "clamp(8px, 1.7vw, 15px)",
+            fontWeight: 900,
+            letterSpacing: "0.32em",
+            textTransform: "uppercase",
+            color: "rgba(239,68,68,0.85)",
+          }}>
+            LIVE
+          </span>
+        ) : !stageData ? (
+          <span style={{
+            fontSize: "clamp(18px, 3.8vw, 34px)",
+            fontWeight: 100,
+            color: "rgba(255,255,255,0.10)",
+          }}>
+            ?
+          </span>
+        ) : null}
+      </div>
 
-        {/* Live indicator */}
-        {isCurrent && (
-          <div className="flex items-center gap-1.5">
-            <div className="relative w-2 h-2 shrink-0">
-              <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-75" />
-              <div className="absolute inset-0 rounded-full bg-red-500" />
-            </div>
-            <span className="text-[9px] font-black tracking-[0.3em] uppercase" style={{ color: "rgba(239,68,68,0.95)" }}>
-              LIVE
-            </span>
-          </div>
-        )}
+      {/* Bottom: stage name */}
+      <div className="relative z-10 shrink-0 text-center" style={{ padding: "0 5% 4%" }}>
+        <span style={{
+          display: "block",
+          fontSize: "clamp(6px, 0.85vw, 8px)",
+          fontWeight: 500,
+          color: "rgba(255,255,255,0.32)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}>
+          {stageName ?? (isCurrent ? "Counterpick pending…" : "—")}
+        </span>
       </div>
     </div>
   );
 }
 
-// ── Full overlay (800 × 600) ───────────────────────────────────────────────────
-// Layout: compact score header → hero game cards → ticker
+// ── Full overlay ───────────────────────────────────────────────────────────────
+// Fluid layout: fills 100% × 100% of whatever the browser source is set to.
+// Designed for 4:3 aspect ratio. All sizing uses vw/vh/clamp so it scales.
 
 function FullMatchOverlay({ match, scoreFlash }: {
   match: OverlayMatchData;
   scoreFlash: boolean;
 }) {
+  useMapEnterKeyframes();
+
   const bestOf      = match.best_of ?? 1;
   const winsNeeded  = Math.ceil(bestOf / 2);
   const currentGame = match.team1_games + match.team2_games + 1;
-
-  const modeData   = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
-  const roundLabel = getRoundLabel(match.round, match.total_rounds);
+  const modeData    = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
+  const roundLabel  = getRoundLabel(match.round, match.total_rounds);
 
   const isComplete = match.status === "complete";
   const isT1Winner = isComplete && match.team1_games > match.team2_games;
@@ -356,108 +439,238 @@ function FullMatchOverlay({ match, scoreFlash }: {
   const pipsT1 = bestOf > 1 ? Array.from({ length: winsNeeded }, (_, i) => i < match.team1_games) : [];
   const pipsT2 = bestOf > 1 ? Array.from({ length: winsNeeded }, (_, i) => i < match.team2_games) : [];
 
+  // Stage for current game (shown in header footer row)
+  const currentGameMap  = match.games.find((g) => g.game_number === currentGame);
+  const currentStage    = match.stage_name ?? currentGameMap?.stage_name ?? null;
+
+  // Per-game versions — when a stage is newly assigned the card re-keys and re-animates
+  const stageVersions = useGameStageVersions(match.games);
+
   return (
     <div
       data-overlay
-      style={{ width: 800, height: 600, display: "flex", flexDirection: "column", overflow: "hidden" }}
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+      }}
     >
-      {/* ── Score header ── */}
+      {/* ── HEADER: prominent team names, big score, mode ── ~27% height */}
       <div
-        className="shrink-0 flex items-center gap-3 px-5"
         style={{
-          height: 52,
-          background: "rgba(6,6,18,0.92)",
+          flex: "0 0 27%",
+          background: "rgba(6,6,18,0.93)",
           backdropFilter: "blur(24px)",
           WebkitBackdropFilter: "blur(24px)",
           borderBottom: "1px solid rgba(255,255,255,0.07)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "1.2vh 4vw 1.2vh",
+          boxSizing: "border-box",
         }}
       >
-        {/* Tournament + round meta */}
-        <span className="text-[9px] font-bold tracking-[0.22em] text-white/35 uppercase shrink-0">
-          {match.tournament_name}
-        </span>
-        <span className="text-white/15 shrink-0">·</span>
-        <span className="text-[9px] font-bold tracking-[0.22em] text-white/35 uppercase shrink-0">
-          {roundLabel}
-        </span>
-        {bestOf > 1 && (
-          <><span className="text-white/15 shrink-0">·</span>
-          <span className="text-[9px] font-bold text-white/30 uppercase shrink-0">BO{bestOf}</span></>
-        )}
-        {modeData && (
-          <><span className="text-white/15 shrink-0">·</span>
-          <img src={modeData.icon} alt={modeData.name} className="w-3.5 h-3.5 object-contain shrink-0" style={{ opacity: 0.50 }} />
-          <span className="text-[9px] font-bold text-white/30 uppercase shrink-0">{modeData.name}</span></>
-        )}
-
-        <div className="flex-1" />
-
-        {/* Teams + score (compact, right-aligned) */}
-        <div className={`flex items-center gap-2.5 transition-transform duration-300 ${scoreFlash ? "scale-105" : "scale-100"}`}>
-          {/* Team 1 */}
-          <span
-            className="text-[13px] font-black truncate max-w-[110px]"
-            style={{ color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.85)" }}
-          >
-            {match.team1.name}
+        {/* Row 1: meta info + live status */}
+        <div style={{ display: "flex", alignItems: "center", gap: "0.8vw", flexWrap: "nowrap" }}>
+          <span style={{
+            fontSize: "clamp(7px, 1.05vw, 10px)",
+            fontWeight: 700,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.30)",
+            whiteSpace: "nowrap",
+          }}>
+            {match.tournament_name}
           </span>
-
+          <span style={{ color: "rgba(255,255,255,0.13)" }}>·</span>
+          <span style={{
+            fontSize: "clamp(7px, 1.05vw, 10px)",
+            fontWeight: 700,
+            letterSpacing: "0.22em",
+            textTransform: "uppercase",
+            color: "rgba(255,255,255,0.30)",
+            whiteSpace: "nowrap",
+          }}>
+            {roundLabel}
+          </span>
           {bestOf > 1 && (
-            <div className="flex gap-0.5 flex-row-reverse">
-              {pipsT1.map((f, i) => <ScorePip key={i} filled={f} win={isT1Winner} />)}
-            </div>
+            <>
+              <span style={{ color: "rgba(255,255,255,0.13)" }}>·</span>
+              <span style={{
+                fontSize: "clamp(7px, 1.05vw, 10px)",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                color: "rgba(255,255,255,0.24)",
+              }}>
+                BO{bestOf}
+              </span>
+            </>
           )}
+          <div style={{ flex: 1 }} />
+          {/* Live indicator */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5vw", flexShrink: 0 }}>
+            {isLive && (
+              <div style={{ position: "relative", width: "clamp(5px, 0.75vw, 8px)", height: "clamp(5px, 0.75vw, 8px)", flexShrink: 0 }}>
+                <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-60" />
+                <div className="absolute inset-0 rounded-full bg-red-500" />
+              </div>
+            )}
+            <span style={{
+              fontSize: "clamp(7px, 1.05vw, 10px)",
+              fontWeight: 900,
+              letterSpacing: "0.28em",
+              textTransform: "uppercase",
+              color: isLive ? "rgba(239,68,68,0.9)" : "rgba(255,255,255,0.28)",
+            }}>
+              {isLive ? "LIVE" : isComplete ? "COMPLETE" : "CONFIRMING"}
+            </span>
+          </div>
+        </div>
 
-          {/* Score numbers */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[20px] font-black tabular-nums leading-none"
-              style={{ color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.88)" }}>
+        {/* Row 2: big team names + massive score */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "2vw",
+            transform: scoreFlash ? "scale(1.015)" : "scale(1)",
+            transition: "transform 0.3s ease",
+          }}
+        >
+          {/* Team 1 — right-aligned, fills available space */}
+          <div style={{ flex: 1, minWidth: 0, textAlign: "right" }}>
+            <span style={{
+              display: "block",
+              fontSize: "clamp(14px, 4vw, 38px)",
+              fontWeight: 900,
+              lineHeight: 1,
+              color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
+              textShadow: isT1Winner ? "0 0 28px rgba(52,211,153,0.50)" : "none",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
+              {match.team1.name}
+            </span>
+          </div>
+
+          {/* Score */}
+          <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "1.2vw" }}>
+            <span style={{
+              fontSize: "clamp(22px, 7.5vw, 68px)",
+              fontWeight: 900,
+              fontVariantNumeric: "tabular-nums",
+              lineHeight: 1,
+              color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
+            }}>
               {match.team1_games}
             </span>
-            <span className="font-thin" style={{ color: "rgba(255,255,255,0.18)" }}>—</span>
-            <span className="text-[20px] font-black tabular-nums leading-none"
-              style={{ color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.88)" }}>
+            <span style={{
+              fontSize: "clamp(12px, 2.5vw, 24px)",
+              fontWeight: 100,
+              color: "rgba(255,255,255,0.18)",
+            }}>
+              —
+            </span>
+            <span style={{
+              fontSize: "clamp(22px, 7.5vw, 68px)",
+              fontWeight: 900,
+              fontVariantNumeric: "tabular-nums",
+              lineHeight: 1,
+              color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
+            }}>
               {match.team2_games}
             </span>
           </div>
 
+          {/* Team 2 — left-aligned */}
+          <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+            <span style={{
+              display: "block",
+              fontSize: "clamp(14px, 4vw, 38px)",
+              fontWeight: 900,
+              lineHeight: 1,
+              color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.90)",
+              textShadow: isT2Winner ? "0 0 28px rgba(52,211,153,0.50)" : "none",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}>
+              {match.team2.name}
+            </span>
+          </div>
+        </div>
+
+        {/* Row 3: pips + mode + current map */}
+        <div style={{ display: "flex", alignItems: "center", gap: "1.5vw" }}>
+          {/* T1 pips */}
           {bestOf > 1 && (
-            <div className="flex gap-0.5">
+            <div style={{ display: "flex", gap: "0.4vw", flexDirection: "row-reverse", flexShrink: 0 }}>
+              {pipsT1.map((f, i) => <ScorePip key={i} filled={f} win={isT1Winner} />)}
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Mode + current stage */}
+          <div style={{ display: "flex", alignItems: "center", gap: "0.7vw", flexShrink: 0 }}>
+            {modeData && (
+              <>
+                <img
+                  src={modeData.icon}
+                  alt={modeData.name}
+                  style={{ width: "clamp(12px, 1.9vw, 18px)", height: "clamp(12px, 1.9vw, 18px)", objectFit: "contain", opacity: 0.65 }}
+                />
+                <span style={{
+                  fontSize: "clamp(7px, 1.1vw, 11px)",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.14em",
+                  color: "rgba(255,255,255,0.42)",
+                }}>
+                  {modeData.name}
+                </span>
+              </>
+            )}
+            {currentStage && (
+              <>
+                <span style={{ color: "rgba(255,255,255,0.14)" }}>·</span>
+                <span style={{
+                  fontSize: "clamp(7px, 1.1vw, 11px)",
+                  fontWeight: 600,
+                  color: "rgba(255,255,255,0.30)",
+                }}>
+                  {currentStage}
+                </span>
+              </>
+            )}
+          </div>
+
+          <div style={{ flex: 1 }} />
+
+          {/* T2 pips */}
+          {bestOf > 1 && (
+            <div style={{ display: "flex", gap: "0.4vw", flexShrink: 0 }}>
               {pipsT2.map((f, i) => <ScorePip key={i} filled={f} win={isT2Winner} />)}
             </div>
           )}
-
-          {/* Team 2 */}
-          <span
-            className="text-[13px] font-black truncate max-w-[110px]"
-            style={{ color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.85)" }}
-          >
-            {match.team2.name}
-          </span>
-        </div>
-
-        {/* Live dot */}
-        <div className="flex items-center gap-1.5 shrink-0 ml-1">
-          {isLive && (
-            <div className="relative w-2 h-2 shrink-0">
-              <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-60" />
-              <div className="absolute inset-0 rounded-full bg-red-500" />
-            </div>
-          )}
-          <span
-            className="text-[9px] font-black tracking-[0.28em] uppercase"
-            style={{ color: isLive ? "rgba(239,68,68,0.9)" : "rgba(255,255,255,0.28)" }}
-          >
-            {isLive ? "LIVE" : isComplete ? "COMPLETE" : "CONFIRMING"}
-          </span>
         </div>
       </div>
 
-      {/* ── Game cards: hero section ── */}
-      <div className="flex-1 flex gap-2 px-5 py-4">
+      {/* ── GAME CARDS ── fill remaining space */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        gap: "1vw",
+        padding: "1.8vh 3vw 1.2vh",
+        boxSizing: "border-box",
+        minHeight: 0,
+      }}>
         {Array.from({ length: bestOf }, (_, i) => i + 1).map((gameNum) => (
           <GameCard
-            key={gameNum}
+            key={`${gameNum}-${stageVersions[gameNum] ?? 0}`}
             gameNum={gameNum}
             match={match}
             modeData={modeData}
@@ -467,8 +680,8 @@ function FullMatchOverlay({ match, scoreFlash }: {
         ))}
       </div>
 
-      {/* ── Ticker ── */}
-      <div className="shrink-0 px-5 pb-3">
+      {/* ── TICKER ── */}
+      <div style={{ flexShrink: 0, padding: "0 3vw 1.5vh" }}>
         <MatchTicker pinnedId={match.match_id} />
       </div>
     </div>
@@ -476,9 +689,6 @@ function FullMatchOverlay({ match, scoreFlash }: {
 }
 
 // ── Corner overlay (~360px wide) ──────────────────────────────────────────────
-// Header row: meta + map thumbnail
-// Score row: team1 | pips + score + pips | team2 (no overlap)
-// Live indicator clearly separated
 
 function CornerMatchOverlay({ match, scoreFlash, stageKey }: {
   match: OverlayMatchData;
@@ -697,7 +907,7 @@ export default function OverlayMatch() {
       );
     }
     return (
-      <div data-overlay style={{ width: 800, height: 600 }} className="flex items-center justify-center">
+      <div data-overlay style={{ width: "100%", height: "100%" }} className="flex items-center justify-center">
         <p className="text-white/20 text-xs font-bold tracking-[0.35em] uppercase">No match pinned</p>
       </div>
     );
