@@ -54,11 +54,21 @@ function useSignupKeyframes() {
         from { opacity: 0; }
         to   { opacity: 1; }
       }
+      @keyframes splPageExit {
+        from { opacity: 1; transform: translateX(0); }
+        to   { opacity: 0; transform: translateX(-3%); }
+      }
+      @keyframes splPageEnter {
+        from { opacity: 0; transform: translateX(3%); }
+        to   { opacity: 1; transform: translateX(0); }
+      }
       .spl-signup-slide-in { animation: splSignupSlideIn 0.45s ease-out both; }
       .spl-team-card-in    { animation: splTeamCardIn 0.5s cubic-bezier(0.22,1,0.36,1) both; }
       .spl-count-bump      { animation: splCountBump 0.4s ease both; }
       .spl-fade-out        { animation: splFadeOut 0.5s ease both; }
       .spl-fade-in         { animation: splFadeIn 0.6s ease both; }
+      .spl-page-exit       { animation: splPageExit 0.28s ease-in both; }
+      .spl-page-enter      { animation: splPageEnter 0.35s cubic-bezier(0.22,1,0.36,1) both; }
     `;
     document.head.appendChild(el);
   }, []);
@@ -79,6 +89,7 @@ export default function OverlaySignups() {
   const [signups, setSignups] = useState<Signup[]>([]);
   const [newNames, setNewNames] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(0);
+  const [pagePhase, setPagePhase] = useState<"idle" | "exiting" | "entering">("idle");
   const [bumpKey, setBumpKey] = useState(0);
   const [teams, setTeams] = useState<TournamentTeam[]>([]);
 
@@ -186,7 +197,14 @@ export default function OverlaySignups() {
   useEffect(() => {
     if (view !== "signup" || totalPages <= 1) return;
     const t = setInterval(() => {
-      setPage((p) => (p + 1) % totalPages);
+      setPagePhase("exiting");
+      const t1 = setTimeout(() => {
+        setPage((p) => (p + 1) % totalPages);
+        setPagePhase("entering");
+        const t2 = setTimeout(() => setPagePhase("idle"), 400);
+        return () => clearTimeout(t2);
+      }, 300);
+      return () => clearTimeout(t1);
     }, 6000);
     return () => clearInterval(t);
   }, [view, totalPages]);
@@ -430,13 +448,15 @@ export default function OverlaySignups() {
         boxSizing: "border-box",
         overflow: "hidden",
       }}>
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "0.6vh 1.2vw",
-          height: "100%",
-          alignContent: "start",
-        }}>
+        <div
+          className={pagePhase === "exiting" ? "spl-page-exit" : pagePhase === "entering" ? "spl-page-enter" : undefined}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
+            gap: "0.6vh 1.2vw",
+            height: "100%",
+            alignContent: "start",
+          }}>
           {pageSignups.map((s) => {
             const isNew = newNames.has(s.display_name);
             return (
