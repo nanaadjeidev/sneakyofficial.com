@@ -229,29 +229,30 @@ function MatchTicker({ pinnedId }: { pinnedId: number }) {
   const item = items[idx];
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2 rounded-xl" style={{
+    <div className="flex items-center gap-3 rounded-xl" style={{
+      padding: "1.4vh 2vw",
       background: "rgba(6,6,16,0.72)",
       border: "1px solid rgba(255,255,255,0.06)",
       backdropFilter: "blur(20px)",
       WebkitBackdropFilter: "blur(20px)",
     }}>
-      <span className="text-[9px] font-black tracking-[0.3em] shrink-0 uppercase" style={{ color: "rgba(255,255,255,0.22)" }}>Other</span>
-      <div className="w-px h-3 shrink-0" style={{ background: "rgba(255,255,255,0.10)" }} />
+      <span style={{ fontSize: "clamp(8px, 1.1vw, 11px)", fontWeight: 900, letterSpacing: "0.3em", flexShrink: 0, textTransform: "uppercase", color: "rgba(255,255,255,0.22)" }}>Other</span>
+      <div className="w-px shrink-0" style={{ height: "clamp(12px, 1.8vh, 18px)", background: "rgba(255,255,255,0.10)" }} />
       <div className="flex-1 flex items-center gap-2 overflow-hidden transition-all duration-300"
         style={{ opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(3px)" }}>
-        <span className="text-[9px] uppercase tracking-wide shrink-0" style={{ color: "rgba(255,255,255,0.28)" }}>R{item.round}</span>
-        <span className={`text-[11px] font-semibold truncate ${item.status === "complete" && item.winner === item.team1 ? "text-emerald-300" : "text-white/65"}`}>{item.team1}</span>
-        <span className="text-[9px] shrink-0" style={{ color: "rgba(255,255,255,0.18)" }}>vs</span>
-        <span className={`text-[11px] font-semibold truncate ${item.status === "complete" && item.winner === item.team2 ? "text-emerald-300" : "text-white/65"}`}>{item.team2}</span>
+        <span style={{ fontSize: "clamp(8px, 1.1vw, 11px)", textTransform: "uppercase", letterSpacing: "0.08em", flexShrink: 0, color: "rgba(255,255,255,0.28)" }}>R{item.round}</span>
+        <span className={`font-semibold truncate ${item.status === "complete" && item.winner === item.team1 ? "text-emerald-300" : "text-white/65"}`} style={{ fontSize: "clamp(10px, 1.4vw, 14px)" }}>{item.team1}</span>
+        <span style={{ fontSize: "clamp(8px, 1.1vw, 11px)", flexShrink: 0, color: "rgba(255,255,255,0.18)" }}>vs</span>
+        <span className={`font-semibold truncate ${item.status === "complete" && item.winner === item.team2 ? "text-emerald-300" : "text-white/65"}`} style={{ fontSize: "clamp(10px, 1.4vw, 14px)" }}>{item.team2}</span>
         {item.status === "complete" && item.winner && (
-          <span className="text-[9px] shrink-0 ml-1" style={{ color: "rgba(52,211,153,0.55)" }}>· {item.winner} wins</span>
+          <span className="shrink-0 ml-1" style={{ fontSize: "clamp(8px, 1.1vw, 11px)", color: "rgba(52,211,153,0.55)" }}>· {item.winner} wins</span>
         )}
-        {item.status === "pending" && <span className="text-[9px] shrink-0" style={{ color: "rgba(255,255,255,0.18)" }}>· upcoming</span>}
+        {item.status === "pending" && <span className="shrink-0" style={{ fontSize: "clamp(8px, 1.1vw, 11px)", color: "rgba(255,255,255,0.18)" }}>· upcoming</span>}
       </div>
-      <div className="flex gap-0.5 shrink-0">
+      <div className="flex gap-1 shrink-0">
         {items.map((_, i) => (
           <div key={i} className={`rounded-full transition-all ${i === idx ? "bg-purple-400" : "bg-white/10"}`}
-            style={{ width: i === idx ? 8 : 5, height: 5 }} />
+            style={{ width: i === idx ? 10 : 6, height: 6 }} />
         ))}
       </div>
     </div>
@@ -304,7 +305,7 @@ function GameCard({
           src={stageData.image}
           alt={stageName ?? ""}
           className="absolute inset-0 w-full h-full object-cover"
-          style={{ opacity: isCompleted ? 0.38 : isCurrent ? 0.88 : 0.18 }}
+          style={{ opacity: isCompleted ? 0.52 : isCurrent ? 0.92 : 0.32 }}
         />
       ) : (
         <div className="absolute inset-0" style={{ background: "rgba(8,8,20,0.95)" }} />
