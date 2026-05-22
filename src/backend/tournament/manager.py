@@ -981,8 +981,15 @@ class TournamentManager:
                     await cur.execute(
                         """SELECT 1 FROM tournament_team_members ttm
                            JOIN tournament_signups s ON ttm.signup_id = s.id
-                           WHERE ttm.team_id = %s AND s.discord_id = %s""",
-                        (opposing_team_id, confirmer_discord)
+                           WHERE ttm.team_id = %s AND (
+                               s.discord_id = %s
+                               OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                                   AND LOWER(s.twitch_username) = (
+                                       SELECT LOWER(twitch_username) FROM player_profiles
+                                       WHERE discord_id = %s AND twitch_username IS NOT NULL LIMIT 1
+                                   ))
+                           )""",
+                        (opposing_team_id, confirmer_discord, confirmer_discord)
                     )
                 else:
                     await cur.execute(
@@ -1179,8 +1186,15 @@ class TournamentManager:
                     await cur.execute(
                         """SELECT 1 FROM tournament_team_members ttm
                            JOIN tournament_signups s ON ttm.signup_id = s.id
-                           WHERE ttm.team_id = %s AND s.discord_id = %s""",
-                        (opposing_team_id, confirmer_discord)
+                           WHERE ttm.team_id = %s AND (
+                               s.discord_id = %s
+                               OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                                   AND LOWER(s.twitch_username) = (
+                                       SELECT LOWER(twitch_username) FROM player_profiles
+                                       WHERE discord_id = %s AND twitch_username IS NOT NULL LIMIT 1
+                                   ))
+                           )""",
+                        (opposing_team_id, confirmer_discord, confirmer_discord)
                     )
                     if not await cur.fetchone():
                         return False, "Only a member of the opposing team can confirm this result.", False
@@ -1378,12 +1392,19 @@ class TournamentManager:
             is_admin = bool(picker_discord and picker_discord in global_config.tournament_admin_ids)
 
             if not is_admin:
-                # Verify picker is in this match
+                # Verify picker is in this match — handles both Discord and Twitch signups
                 await cur.execute(
                     """SELECT ttm.team_id FROM tournament_team_members ttm
                        JOIN tournament_signups s ON ttm.signup_id = s.id
-                       WHERE s.tournament_id = %s AND s.discord_id = %s LIMIT 1""",
-                    (tournament_id, picker_discord)
+                       WHERE s.tournament_id = %s AND (
+                           s.discord_id = %s
+                           OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(s.twitch_username) = (
+                                   SELECT LOWER(twitch_username) FROM player_profiles
+                                   WHERE discord_id = %s AND twitch_username IS NOT NULL LIMIT 1
+                               ))
+                       ) LIMIT 1""",
+                    (tournament_id, picker_discord, picker_discord)
                 )
                 team_row = await cur.fetchone()
                 if not team_row or team_row[0] not in (team1_id, team2_id):
