@@ -154,6 +154,8 @@ class WebServer:
         self.app.router.add_post(
             "/api/tournament/admin/match/complete", self.sneaky_api.tournament_admin_complete_match)
         self.app.router.add_post(
+            "/api/tournament/admin/match/revert", self.sneaky_api.tournament_admin_revert_match)
+        self.app.router.add_post(
             "/api/tournament/admin/schedule", self.sneaky_api.tournament_admin_save_schedule)
         self.app.router.add_post(
             "/api/tournament/admin/pin-match", self.sneaky_api.tournament_admin_pin_match)

@@ -567,6 +567,18 @@ class SneakyApi:
         return web.json_response({"ok": True})
 
     @verify_tournament_admin
+    async def tournament_admin_revert_match(self, request: Request, admin_id: int) -> web.Response:
+        """Revert a completed (or awaiting-confirmation) match back to pending."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.admin_revert_match(match_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
     async def tournament_admin_report_game(self, request: Request, admin_id: int) -> web.Response:
         """Admin force-sets a confirmed game result within a match, overwriting any existing record."""
         try:

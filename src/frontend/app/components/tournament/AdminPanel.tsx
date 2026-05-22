@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
+import { Plus, Trash2, Lock, X, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus, RotateCcw } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 import { STAGES, MODES } from "./splatoonData";
 
@@ -85,6 +85,8 @@ interface AdminMatch {
   team1: { id: number; name: string } | null;
   team2: { id: number; name: string } | null;
   status: string;
+  team1_games?: number;
+  team2_games?: number;
   schedule?: RoundSchedule | null;
 }
 
@@ -355,7 +357,10 @@ export function AdminMatchReporter({ onRefresh, flash }: {
   flash: (text: string, ok: boolean) => void;
 }) {
   const [matches, setMatches] = useState<AdminMatch[]>([]);
+  const [completedMatches, setCompletedMatches] = useState<AdminMatch[]>([]);
   const [reporting, setReporting] = useState<number | null>(null);
+  const [reverting, setReverting] = useState<number | null>(null);
+  const [revertConfirm, setRevertConfirm] = useState<number | null>(null);
   const [pinnedId, setPinnedId] = useState<number | null>(null);
   const [scores, setScores] = useState<Record<number, [number, number]>>({});
   const [mapsOpen, setMapsOpen] = useState<Record<number, boolean>>({});
@@ -368,20 +373,27 @@ export function AdminMatchReporter({ onRefresh, flash }: {
       const { data } = await axios.get(`${API_URL}/api/tournament`, {
         params: { guild_id: GUILD_ID },
       });
-      const pending: AdminMatch[] = (data.rounds ?? []).flatMap((r: { round: number; matches: AdminMatch[]; schedule?: { best_of?: number; mode_name?: string; games?: GameMap[] } | null }) => {
+      const pending: AdminMatch[] = [];
+      const completed: AdminMatch[] = [];
+      const scoreMap: Record<number, [number, number]> = {};
+
+      (data.rounds ?? []).forEach((r: { round: number; matches: AdminMatch[]; schedule?: { best_of?: number; mode_name?: string; games?: GameMap[] } | null }) => {
         const sched: RoundSchedule | null = r.schedule
           ? { best_of: r.schedule.best_of ?? 1, mode_name: r.schedule.mode_name ?? null, games: r.schedule.games ?? [] }
           : null;
-        return r.matches
-          .filter((m) => (m.status === "pending" || m.status === "awaiting_confirmation") && m.team1 && m.team2)
-          .map((m) => ({ ...m, round: r.round, schedule: sched }));
+        r.matches.forEach((m) => {
+          scoreMap[m.id] = [m.team1_games ?? 0, m.team2_games ?? 0];
+          const mapped = { ...m, round: r.round, schedule: sched };
+          if ((m.status === "pending" || m.status === "awaiting_confirmation") && m.team1 && m.team2) {
+            pending.push(mapped);
+          } else if (m.status === "complete" && m.team1 && m.team2) {
+            completed.push(mapped);
+          }
+        });
       });
+
       setMatches(pending);
-      // Sync game scores from data
-      const scoreMap: Record<number, [number, number]> = {};
-      (data.rounds ?? []).forEach((r: { matches: Array<{ id: number; team1_games?: number; team2_games?: number }> }) => {
-        r.matches.forEach((m) => { scoreMap[m.id] = [m.team1_games ?? 0, m.team2_games ?? 0]; });
-      });
+      setCompletedMatches(completed);
       setScores(scoreMap);
     } catch {
       // ignore
@@ -442,6 +454,24 @@ export function AdminMatchReporter({ onRefresh, flash }: {
       );
     } catch {
       flash("Failed to update score.", false);
+    }
+  };
+
+  const revertMatch = async (matchId: number) => {
+    setReverting(matchId);
+    setRevertConfirm(null);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/match/revert`,
+        { match_id: matchId },
+        { withCredentials: true }
+      );
+      flash(data.message, data.ok);
+      if (data.ok) { await fetchMatches(); onRefresh(); }
+    } catch {
+      flash("Failed to revert match.", false);
+    } finally {
+      setReverting(null);
     }
   };
 
@@ -602,6 +632,55 @@ export function AdminMatchReporter({ onRefresh, flash }: {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Completed matches — revert section */}
+      {completedMatches.length > 0 && (
+        <div className="mt-5">
+          <div className="flex items-center gap-2 mb-3">
+            <RotateCcw className="w-4 h-4 text-slate-500" />
+            <span className="text-sm font-semibold text-slate-400">Completed Matches</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {completedMatches.map((m) => (
+              <div key={m.id} className="rounded-lg border border-slate-700/40 bg-slate-800/30 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-slate-500">Round {m.round} · Match #{m.id}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full border text-green-300 border-green-600/40 bg-green-900/20">Complete</span>
+                </div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-semibold text-slate-300">{m.team1?.name}</span>
+                  <span className="text-xs text-slate-600 mx-2">vs</span>
+                  <span className="text-sm font-semibold text-slate-300">{m.team2?.name}</span>
+                </div>
+                {revertConfirm === m.id ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => revertMatch(m.id)}
+                      disabled={reverting === m.id}
+                      className="flex-1 text-xs px-2 py-1.5 rounded border border-red-600/50 bg-red-900/20 text-red-300 hover:bg-red-900/40 disabled:opacity-50"
+                    >
+                      {reverting === m.id ? "Reverting…" : "Confirm revert"}
+                    </button>
+                    <button
+                      onClick={() => setRevertConfirm(null)}
+                      className="text-xs px-2 py-1.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setRevertConfirm(m.id)}
+                    className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded border border-slate-600/40 text-slate-400 hover:border-red-600/40 hover:text-red-300 transition-colors"
+                  >
+                    <RotateCcw className="w-3 h-3" /> Revert Series
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

@@ -1716,6 +1716,72 @@ class TournamentManager:
         })
         return True, f"Match completed. **{name_row[0] if name_row else 'Winner'}** advances!"
 
+    @staticmethod
+    async def admin_revert_match(match_id: int) -> tuple[bool, str]:
+        """Revert a match to pending, erasing all game results and undoing winner advancement."""
+        async with DBContextManager() as cur:
+            await cur.execute(
+                "SELECT tournament_id, round, match_number, team1_id, team2_id, winner_id, status FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return False, "Match not found."
+            tournament_id, rnd, match_num, team1_id, team2_id, winner_id, status = row
+
+            # If the match was complete, undo the winner advancement into the next round
+            if status == "complete" and winner_id:
+                next_round = rnd + 1
+                next_match_num = (match_num + 1) // 2
+                slot = "team1_id" if match_num % 2 == 1 else "team2_id"
+
+                await cur.execute(
+                    "SELECT id, status FROM tournament_matches WHERE tournament_id = %s AND round = %s AND match_number = %s",
+                    (tournament_id, next_round, next_match_num)
+                )
+                next_match = await cur.fetchone()
+                if next_match:
+                    next_match_id, next_status = next_match
+                    if next_status == "complete":
+                        return False, "Cannot revert: the winner has already played and completed a further match. Revert that match first."
+                    # Clear the advancing team's slot and reset home/room assignment
+                    await cur.execute(
+                        f"UPDATE tournament_matches SET {slot} = NULL, home_team_id = NULL, room_code = NULL WHERE id = %s",
+                        (next_match_id,)
+                    )
+
+            # Delete game-by-game results
+            await cur.execute("DELETE FROM tournament_match_games WHERE match_id = %s", (match_id,))
+            # Delete old-style win reports
+            await cur.execute("DELETE FROM tournament_win_reports WHERE match_id = %s", (match_id,))
+            # Delete match-specific counterpick stage overrides (leave round-level defaults)
+            await cur.execute(
+                "DELETE FROM tournament_round_games WHERE match_id = %s AND match_id != 0",
+                (match_id,)
+            )
+            # Reset the match itself
+            await cur.execute(
+                "UPDATE tournament_matches SET status = 'pending', winner_id = NULL WHERE id = %s",
+                (match_id,)
+            )
+            # If the tournament was marked complete, reopen it
+            await cur.execute(
+                "UPDATE tournaments SET status = 'active' WHERE id = %s AND status = 'complete'",
+                (tournament_id,)
+            )
+
+        # Clear in-memory overlay caches
+        TournamentManager._game_scores.pop(match_id, None)
+        TournamentManager._game_results.pop(match_id, None)
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "match_reverted",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+        })
+        return True, "Match reverted to pending. All game results cleared."
+
     # ------------------------------------------------------------------ #
     #  Data retrieval                                                      #
     # ------------------------------------------------------------------ #
