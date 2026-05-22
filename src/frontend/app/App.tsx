@@ -14,6 +14,7 @@ import OverlayMatch from "./pages/overlay/OverlayMatch";
 import OverlayBracket from "./pages/overlay/OverlayBracket";
 import OverlayLeaderboard from "./pages/overlay/OverlayLeaderboard";
 import OverlayUpNext from "./pages/overlay/OverlayUpNext";
+import OverlaySignups from "./pages/overlay/OverlaySignups";
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
       <Route path="/overlay/bracket" element={<OverlayBracket />} />
       <Route path="/overlay/leaderboard" element={<OverlayLeaderboard />} />
       <Route path="/overlay/upnext" element={<OverlayUpNext />} />
+      <Route path="/overlay/signups" element={<OverlaySignups />} />
     </Routes>
   );
 }
