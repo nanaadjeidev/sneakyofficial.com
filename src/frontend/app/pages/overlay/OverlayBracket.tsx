@@ -60,25 +60,35 @@ function useWsRefresh(onRefresh: () => void) {
 
 // ─── Corner overlay ───────────────────────────────────────────────────────────
 
-function CornerMatchRow({ match, isFinal }: { match: Match; isFinal: boolean }) {
+function CornerMatchRow({ match, isFinal, isPinned }: { match: Match; isFinal: boolean; isPinned: boolean }) {
   const t1Won = match.winner_id === match.team1?.id;
   const t2Won = match.winner_id === match.team2?.id;
   const done = match.status === "complete";
   if (match.is_bye || (!match.team1 && !match.team2)) return null;
   return (
-    <div className={`rounded-lg px-2.5 py-1.5 border text-xs ${isFinal ? "border-yellow-500/40 bg-yellow-900/10" : "border-white/10 bg-white/5"}`}>
-      <div className={`font-semibold truncate leading-snug ${done && t1Won ? "text-emerald-300" : done && !t1Won ? "text-white/35" : "text-white/80"}`}>
+    <div className={`rounded-lg px-2.5 py-1.5 border text-xs ${
+      isPinned
+        ? "border-purple-500/60 bg-purple-900/20 shadow-[0_0_10px_rgba(145,70,255,0.25)]"
+        : isFinal
+        ? "border-yellow-500/40 bg-yellow-900/10"
+        : "border-white/10 bg-white/5"
+    }`}>
+      {isPinned && <div className="flex items-center gap-1 mb-0.5">
+        <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+        <span className="text-[8px] font-bold tracking-widest text-red-400 uppercase">Live</span>
+      </div>}
+      <div className={`font-semibold truncate leading-snug ${done && t1Won ? "text-emerald-300" : done && !t1Won ? "text-white/35" : isPinned ? "text-white" : "text-white/80"}`}>
         {match.team1?.name ?? "TBD"}
       </div>
       <div className="text-[9px] text-white/20 text-center my-0.5 tracking-widest">VS</div>
-      <div className={`font-semibold truncate leading-snug ${done && t2Won ? "text-emerald-300" : done && !t2Won ? "text-white/35" : "text-white/80"}`}>
+      <div className={`font-semibold truncate leading-snug ${done && t2Won ? "text-emerald-300" : done && !t2Won ? "text-white/35" : isPinned ? "text-white" : "text-white/80"}`}>
         {match.team2?.name ?? "TBD"}
       </div>
     </div>
   );
 }
 
-function CornerOverlay({ data }: { data: BracketData }) {
+function CornerOverlay({ data, pinnedMatchId }: { data: BracketData; pinnedMatchId: number | null }) {
   const rounds = data.rounds;
   const total = rounds.length;
   const active = rounds.find((r) => r.matches.some((m) => m.status !== "complete" && !m.is_bye)) ?? rounds[total - 1];
@@ -105,7 +115,7 @@ function CornerOverlay({ data }: { data: BracketData }) {
           </div>
         )}
         <div className="p-2 flex flex-col gap-1.5">
-          {visible.map((m) => <CornerMatchRow key={m.id} match={m} isFinal={isFinal} />)}
+          {visible.map((m) => <CornerMatchRow key={m.id} match={m} isFinal={isFinal} isPinned={m.id === pinnedMatchId} />)}
         </div>
         <div className="flex justify-center gap-1 pb-2">
           {rounds.map((r) => {
@@ -312,6 +322,7 @@ function FullOverlay({ data }: { data: BracketData }) {
 export default function OverlayBracket() {
   const style = useQueryParam("style") ?? "corner";
   const [data, setData] = useState<BracketData | null>(null);
+  const [pinnedMatchId, setPinnedMatchId] = useState<number | null>(null);
 
   useEffect(() => {
     document.body.classList.add("overlay-mode");
@@ -322,8 +333,12 @@ export default function OverlayBracket() {
   const fetchData = useCallback(async () => {
     if (!GUILD_ID) return;
     try {
-      const { data: res } = await axios.get(`${API_URL}/api/tournament`, { params: { guild_id: GUILD_ID } });
-      if (res?.tournament) setData(res);
+      const [bracketRes, overlayRes] = await Promise.all([
+        axios.get(`${API_URL}/api/tournament`, { params: { guild_id: GUILD_ID } }),
+        axios.get(`${API_URL}/api/tournament/overlay`, { params: { guild_id: GUILD_ID } }),
+      ]);
+      if (bracketRes.data?.tournament) setData(bracketRes.data);
+      setPinnedMatchId(overlayRes.data?.match?.match_id ?? null);
     } catch { /* ignore */ }
   }, []);
 
@@ -343,7 +358,7 @@ export default function OverlayBracket() {
 
   return (
     <div className="fixed top-4 right-4">
-      <CornerOverlay data={data} />
+      <CornerOverlay data={data} pinnedMatchId={pinnedMatchId} />
     </div>
   );
 }

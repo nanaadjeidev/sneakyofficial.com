@@ -665,9 +665,9 @@ function FullMatchOverlay({ match, scoreFlash }: {
         flex: 1,
         display: "flex",
         gap: "1vw",
-        padding: "1.8vh 3vw 1.2vh",
+        padding: "1.2vh 3vw 0.8vh",
         boxSizing: "border-box",
-        minHeight: 0,
+        minHeight: "28vh",
       }}>
         {Array.from({ length: bestOf }, (_, i) => i + 1).map((gameNum) => (
           <GameCard

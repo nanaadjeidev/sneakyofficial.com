@@ -227,3 +227,18 @@ CREATE TABLE IF NOT EXISTS tournament_round_games (
   FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE
 );
 -- Migration for existing installs: (run the CREATE TABLE above)
+
+CREATE TABLE IF NOT EXISTS tournament_match_games (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  match_id INT NOT NULL,
+  game_number INT NOT NULL,
+  winner_team_id INT NOT NULL,
+  reported_by_discord BIGINT,
+  confirmed_by_discord BIGINT,
+  status ENUM('pending','confirmed','disputed') DEFAULT 'pending',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_match_game (match_id, game_number),
+  FOREIGN KEY (match_id) REFERENCES tournament_matches(id) ON DELETE CASCADE,
+  FOREIGN KEY (winner_team_id) REFERENCES tournament_teams(id)
+);
+-- Migration for existing installs: (run the CREATE TABLE above)

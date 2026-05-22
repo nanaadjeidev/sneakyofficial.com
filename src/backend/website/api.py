@@ -712,6 +712,87 @@ class SneakyApi:
         ok, msg = await TournamentManager.dispute_win(match_id=match_id)
         return web.json_response({"ok": ok, "message": msg})
 
+    @verify_access_token
+    async def tournament_web_report_game(self, request: Request, discord_id: str) -> web.Response:
+        """Logged-in player reports the winner of a single game within their match."""
+        try:
+            body = await request.json()
+            guild_id = int(body["guild_id"])
+            game_number = int(body["game_number"])
+            result = body["result"]  # "win" or "loss"
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        tournament = await TournamentManager.get_active_tournament(guild_id)
+        if not tournament or tournament["status"] != "active":
+            return web.json_response({"ok": False, "message": "No active tournament."})
+
+        match = await TournamentManager.get_player_active_match(tournament["id"], discord_id=int(discord_id))
+        if not match:
+            return web.json_response({"ok": False, "message": "You don't have an active match right now."})
+
+        player_team_id = match["player_team_id"]
+        winner_team_id = player_team_id if result == "win" else (
+            match["team2_id"] if player_team_id == match["team1_id"] else match["team1_id"]
+        )
+
+        ok, msg = await TournamentManager.report_game_win(
+            match_id=match["id"],
+            game_number=game_number,
+            winner_team_id=winner_team_id,
+            reporter_discord=int(discord_id),
+        )
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_access_token
+    async def tournament_web_confirm_game(self, request: Request, discord_id: str) -> web.Response:
+        """Logged-in player confirms a pending game result."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg, series_complete = await TournamentManager.confirm_game_win(
+            match_id=match_id,
+            game_number=game_number,
+            confirmer_discord=int(discord_id),
+        )
+        return web.json_response({"ok": ok, "message": msg, "series_complete": series_complete})
+
+    @verify_access_token
+    async def tournament_web_dispute_game(self, request: Request, discord_id: str) -> web.Response:
+        """Logged-in player disputes a pending game result."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.dispute_game(match_id=match_id, game_number=game_number)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_access_token
+    async def tournament_web_counterpick(self, request: Request, discord_id: str) -> web.Response:
+        """Logged-in player locks in a counterpick stage for an upcoming game."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+            stage_name = str(body["stage_name"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.player_set_counterpick(
+            match_id=match_id,
+            game_number=game_number,
+            stage_name=stage_name,
+            picker_discord=int(discord_id),
+        )
+        return web.json_response({"ok": ok, "message": msg})
+
     async def handle_tournament_ws(self, request: web.Request) -> web.WebSocketResponse:
         """WebSocket endpoint — streams signup/match events to connected clients."""
         ws = web.WebSocketResponse(heartbeat=30)

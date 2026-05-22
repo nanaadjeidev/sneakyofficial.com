@@ -129,6 +129,14 @@ class WebServer:
             "/api/tournament/confirm", self.sneaky_api.tournament_web_confirm)
         self.app.router.add_post(
             "/api/tournament/dispute", self.sneaky_api.tournament_web_dispute)
+        self.app.router.add_post(
+            "/api/tournament/report-game", self.sneaky_api.tournament_web_report_game)
+        self.app.router.add_post(
+            "/api/tournament/confirm-game", self.sneaky_api.tournament_web_confirm_game)
+        self.app.router.add_post(
+            "/api/tournament/dispute-game", self.sneaky_api.tournament_web_dispute_game)
+        self.app.router.add_post(
+            "/api/tournament/counterpick", self.sneaky_api.tournament_web_counterpick)
         self.app.router.add_get(
             "/api/tournament/list", self.sneaky_api.serve_tournament_list)
         self.app.router.add_get(

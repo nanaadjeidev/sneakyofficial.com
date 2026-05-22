@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef, useLayoutEffect, useMemo } fr
 import confetti from "canvas-confetti";
 import { Helmet } from "react-helmet";
 import axios from "axios";
-import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X, History } from "lucide-react";
+import { Trophy, Users, Clock, Swords, CheckCircle, AlertCircle, LogIn, Crown, ChevronLeft, ChevronRight, Maximize2, List, X, History, MapPin } from "lucide-react";
 import PageWrapper from "../components/PageWrapper";
 import AdminPanel, { type Signup, type PreTeam } from "../components/tournament/AdminPanel";
 import { useAuth } from "../hooks/useAuth";
@@ -37,6 +37,8 @@ interface WsEvent {
   signups?: PublicSignup[];
   team1_games?: number;
   team2_games?: number;
+  game_number?: number;
+  stage_name?: string;
 }
 
 interface MyMatch {
@@ -54,6 +56,14 @@ interface MyMatch {
   room_code: string | null;
   schedule?: { mode_id: string | null; mode_name: string | null; best_of: number } | null;
   games?: { game_number: number; stage_name: string | null }[];
+  game_results?: { game_number: number; winner_team_id: number }[];
+  team1_games?: number;
+  team2_games?: number;
+  current_game_number?: number;
+  pending_game?: { game_number: number; reported_winner_id: number } | null;
+  needs_counterpick?: boolean;
+  opponent_needs_counterpick?: boolean;
+  counterpick_game_number?: number | null;
 }
 
 const CARD_H  = 84; // estimated match-card height (px) used for gap maths
@@ -846,6 +856,100 @@ function SignupList({ signups, newSignupKeys, exitingSignupKeys }: {
   );
 }
 
+// ---- Confirm dialog -------------------------------------------------------
+
+function ConfirmDialog({ title, message, confirmLabel = "Confirm", danger = false, onConfirm, onCancel }: {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  danger?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onCancel}>
+      <div className="rounded-xl border border-slate-700 bg-slate-900 shadow-2xl w-full max-w-sm p-6" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-bold text-white mb-2">{title}</h3>
+        <p className="text-sm text-slate-400 mb-6">{message}</p>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="flex-1 py-2 rounded-lg bg-slate-700/60 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition-colors">
+            Cancel
+          </button>
+          <button onClick={onConfirm} className={`flex-1 py-2 rounded-lg text-white text-sm font-semibold transition-colors ${danger ? "bg-red-600 hover:bg-red-500" : "bg-purple-600 hover:bg-purple-500"}`}>
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Counterpick stage picker ---------------------------------------------
+
+function CounterpickPicker({ gameNumber, isHomePick, onPick, loading }: {
+  gameNumber: number;
+  isHomePick: boolean;
+  onPick: (stage: string) => void;
+  loading: boolean;
+}) {
+  const [selected, setSelected] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-3">
+        <MapPin className="w-4 h-4 text-purple-400" />
+        <span className="text-sm font-semibold text-purple-300">
+          {isHomePick ? `Pick the map for Game ${gameNumber}` : `Your counterpick for Game ${gameNumber}`}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 gap-1.5 mb-3 max-h-60 overflow-y-auto pr-0.5">
+        {STAGES.map((stage) => (
+          <button
+            key={stage.name}
+            onClick={() => setSelected(stage.name)}
+            className={`relative rounded-lg overflow-hidden border-2 transition-all text-left ${
+              selected === stage.name
+                ? "border-purple-500 ring-2 ring-purple-500/40"
+                : "border-slate-700/50 hover:border-slate-500"
+            }`}
+          >
+            <img src={stage.image} alt={stage.name} className="w-full h-14 object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+            <span className="absolute bottom-1 left-2 right-2 text-[10px] font-semibold text-white leading-tight truncate">
+              {stage.name}
+            </span>
+            {selected === stage.name && (
+              <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-purple-500 flex items-center justify-center">
+                <CheckCircle className="w-3 h-3 text-white" />
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      <button
+        onClick={() => selected && setConfirm(true)}
+        disabled={!selected || loading}
+        className="w-full py-2 rounded-lg bg-purple-600/80 hover:bg-purple-600 disabled:opacity-40 text-white text-sm font-semibold transition-colors"
+      >
+        {selected ? `Lock in ${selected}` : "Select a map first"}
+      </button>
+
+      {confirm && selected && (
+        <ConfirmDialog
+          title={isHomePick ? "Lock in your pick?" : "Lock in counterpick?"}
+          message={`${selected} will be the map for Game ${gameNumber}. This cannot be changed once confirmed.`}
+          confirmLabel="Lock it in"
+          onConfirm={() => { setConfirm(false); onPick(selected); }}
+          onCancel={() => setConfirm(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ---- Match report card (for logged-in players) ----------------------------
 
 function MatchReportCard({
@@ -853,33 +957,51 @@ function MatchReportCard({
   opponentMatchId,
   loading,
   message,
-  onReport,
-  onConfirm,
-  onDispute,
+  onReportGame,
+  onConfirmGame,
+  onDisputeGame,
+  onCounterpick,
 }: {
   match: MyMatch;
   opponentMatchId?: number | null;
   loading: boolean;
   message: string | null;
-  onReport: (result: "win" | "loss") => void;
-  onConfirm: () => void;
-  onDispute: () => void;
+  onReportGame: (gameNumber: number, result: "win" | "loss") => void;
+  onConfirmGame: (gameNumber: number) => void;
+  onDisputeGame: (gameNumber: number) => void;
+  onCounterpick: (gameNumber: number, stage: string) => void;
 }) {
+  const [reportDialog, setReportDialog] = useState<{ gameNumber: number; result: "win" | "loss" } | null>(null);
+
   const modeData = match.schedule?.mode_id ? MODES.find((m) => m.id === match.schedule!.mode_id) : null;
   const bestOf = match.schedule?.best_of ?? 1;
-  const gameSlots = Array.from({ length: bestOf }, (_, i) => {
-    const gameNum = i + 1;
-    const stageName = match.games?.find((g) => g.game_number === gameNum)?.stage_name ?? null;
-    return { gameNum, stageName };
-  });
   const myTeamName    = match.player_team_id === match.team1_id ? match.team1_name : match.team2_name;
   const theirTeamName = match.player_team_id === match.team1_id ? match.team2_name : match.team1_name;
   const hasOpponent   = !!match.opposing_team_id;
-  const reportedWinnerIsMe   = match.reported_winner_id === match.player_team_id;
-  const reportedWinnerIsThem = match.reported_winner_id !== null && match.reported_winner_id !== match.player_team_id;
+
+  const gameResults  = match.game_results ?? [];
+  const t1Wins = match.team1_games ?? 0;
+  const t2Wins = match.team2_games ?? 0;
+  const myWins   = match.player_team_id === match.team1_id ? t1Wins : t2Wins;
+  const theirWins = match.player_team_id === match.team1_id ? t2Wins : t1Wins;
+
+  const pendingGame = match.pending_game ?? null;
+  const pendingWinnerIsMe   = pendingGame?.reported_winner_id === match.player_team_id;
+  const pendingWinnerIsThem = pendingGame != null && pendingGame.reported_winner_id !== match.player_team_id;
+
+  const currentGame = match.current_game_number ?? 1;
+
+  const gameSlots = Array.from({ length: bestOf }, (_, i) => {
+    const gameNum = i + 1;
+    const stageName = match.games?.find((g) => g.game_number === gameNum)?.stage_name ?? null;
+    const result = gameResults.find((r) => r.game_number === gameNum);
+    const didMyTeamWin = result ? result.winner_team_id === match.player_team_id : null;
+    return { gameNum, stageName, didMyTeamWin };
+  });
 
   return (
     <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-950/20 backdrop-blur-sm p-5">
+      {/* Header */}
       <div className="flex items-center gap-2 mb-3">
         <Swords className="w-4 h-4 text-blue-400" />
         <span className="text-sm font-semibold text-blue-300">Your Match</span>
@@ -895,17 +1017,39 @@ function MatchReportCard({
         <span className="text-xs text-slate-500 ml-auto">Round {match.round}</span>
       </div>
 
-      <p className="text-sm text-slate-300 mb-4">
-        <span className="text-white font-semibold">{myTeamName ?? "Your Team"}</span>
-        <span className="text-slate-500 mx-2">vs</span>
+      {/* Teams + score */}
+      <div className="flex items-center justify-between mb-4">
+        <span className="text-white font-semibold text-sm">{myTeamName ?? "Your Team"}</span>
+        {hasOpponent && bestOf > 1 && (
+          <span className="text-xl font-black text-white tabular-nums mx-3">{myWins} – {theirWins}</span>
+        )}
+        {hasOpponent && bestOf === 1 && <span className="text-slate-500 mx-3 text-sm">vs</span>}
         {theirTeamName
-          ? <span className="text-white font-semibold">{theirTeamName}</span>
-          : <span className="text-slate-500 italic text-xs">
-              {opponentMatchId ? `Match #${opponentMatchId} winner` : "Opponent TBD"}
-            </span>
+          ? <span className="text-white font-semibold text-sm">{theirTeamName}</span>
+          : <span className="text-slate-500 italic text-xs">{opponentMatchId ? `Match #${opponentMatchId} winner` : "Opponent TBD"}</span>
         }
-      </p>
+      </div>
 
+      {/* Game pips */}
+      {bestOf > 1 && (
+        <div className="flex items-center justify-center gap-1.5 mb-4">
+          {gameSlots.map(({ gameNum, didMyTeamWin }) => (
+            <div key={gameNum} className={`w-3 h-3 rounded-full border transition-all ${
+              didMyTeamWin === true
+                ? "bg-green-400 border-green-400"
+                : didMyTeamWin === false
+                ? "bg-red-500/70 border-red-500/70"
+                : gameNum === currentGame && pendingGame
+                ? "bg-yellow-400/60 border-yellow-400/60 animate-pulse"
+                : gameNum <= currentGame
+                ? "bg-slate-600 border-slate-500"
+                : "bg-slate-800 border-slate-700"
+            }`} title={`Game ${gameNum}`} />
+          ))}
+        </div>
+      )}
+
+      {/* Mode + game map list */}
       {(modeData || bestOf > 0) && (
         <div className="mb-4 rounded-lg bg-slate-800/50 border border-slate-700/50 overflow-hidden">
           {(modeData || bestOf > 1) && (
@@ -916,16 +1060,18 @@ function MatchReportCard({
             </div>
           )}
           <div className="divide-y divide-slate-700/40">
-            {gameSlots.map(({ gameNum, stageName }) => {
+            {gameSlots.map(({ gameNum, stageName, didMyTeamWin }) => {
               const label = gameNum === 1
                 ? bestOf === 1 ? "Stage" : "G1 — Home pick"
                 : `G${gameNum} — Counterpick`;
               return (
-                <div key={gameNum} className="flex items-center gap-2 px-3 py-1.5">
+                <div key={gameNum} className={`flex items-center gap-2 px-3 py-1.5 ${gameNum === currentGame ? "bg-blue-950/30" : ""}`}>
                   <span className="text-[10px] text-slate-500 uppercase tracking-wide w-28 shrink-0">{label}</span>
+                  {didMyTeamWin === true && <CheckCircle className="w-3 h-3 text-green-400 shrink-0" />}
+                  {didMyTeamWin === false && <X className="w-3 h-3 text-red-400 shrink-0" />}
                   {stageName
                     ? <span className="text-xs text-slate-200">{stageName}</span>
-                    : <span className="text-xs text-slate-500 italic">Counterpick</span>
+                    : <span className="text-xs text-slate-500 italic">TBD</span>
                   }
                 </div>
               );
@@ -934,6 +1080,7 @@ function MatchReportCard({
         </div>
       )}
 
+      {/* Room code (home team only) */}
       {hasOpponent && match.is_home_team && match.room_code && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
           <p className="text-xs text-amber-400/80 mb-1">You are the home team. Create the private lobby.</p>
@@ -943,22 +1090,73 @@ function MatchReportCard({
       {hasOpponent && !match.is_home_team && (
         <p className="mb-4 text-xs text-slate-500">You are the away team. Wait for the home team to share the room code.</p>
       )}
-
       {!hasOpponent && (
         <p className="mb-4 text-xs text-slate-500">Waiting for your opponent to be decided from the previous match.</p>
       )}
 
-      {match.status === "pending" && hasOpponent && (
+      {/* ---- Action area ---- */}
+
+      {/* Counterpick picker — this player needs to pick */}
+      {match.needs_counterpick && match.counterpick_game_number != null && hasOpponent && (
+        <div className="mb-3 p-3 rounded-lg bg-purple-950/30 border border-purple-700/40">
+          <CounterpickPicker
+            gameNumber={match.counterpick_game_number}
+            isHomePick={match.counterpick_game_number === 1}
+            onPick={(stage) => onCounterpick(match.counterpick_game_number!, stage)}
+            loading={loading}
+          />
+        </div>
+      )}
+
+      {/* Opponent needs to counterpick */}
+      {match.opponent_needs_counterpick && !match.needs_counterpick && hasOpponent && (
+        <p className="text-sm text-purple-400/80 text-center py-2">
+          Waiting for {theirTeamName ?? "opponents"} to pick a map for Game {match.counterpick_game_number}…
+        </p>
+      )}
+
+      {/* Game result awaiting confirmation — I reported */}
+      {pendingGame && pendingWinnerIsMe && (
+        <p className="text-sm text-yellow-400/80 text-center py-1">
+          Game {pendingGame.game_number} result reported — waiting for {theirTeamName ?? "opponents"} to confirm…
+        </p>
+      )}
+
+      {/* Game result awaiting confirmation — opponent reported */}
+      {pendingGame && pendingWinnerIsThem && (
+        <div>
+          <p className="text-sm text-slate-400 mb-3">
+            {theirTeamName ?? "Opponents"} reported a win for Game {pendingGame.game_number}. Do you confirm?
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => onConfirmGame(pendingGame.game_number)} disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+              Confirm
+            </button>
+            <button onClick={() => onDisputeGame(pendingGame.game_number)} disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50">
+              Dispute
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Report game win/loss buttons — no pending game, no counterpick needed, map is set */}
+      {match.status !== "awaiting_confirmation"
+        && !pendingGame
+        && !match.needs_counterpick
+        && !match.opponent_needs_counterpick
+        && hasOpponent && (
         <div className="flex gap-2">
           <button
-            onClick={() => onReport("win")}
+            onClick={() => setReportDialog({ gameNumber: currentGame, result: "win" })}
             disabled={loading}
             className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
           >
-            We Won
+            We Won Game {currentGame}
           </button>
           <button
-            onClick={() => onReport("loss")}
+            onClick={() => setReportDialog({ gameNumber: currentGame, result: "loss" })}
             disabled={loading}
             className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50"
           >
@@ -967,38 +1165,24 @@ function MatchReportCard({
         </div>
       )}
 
-      {match.status === "awaiting_confirmation" && reportedWinnerIsMe && (
-        <p className="text-sm text-yellow-400/80 text-center py-1">
-          Waiting for {theirTeamName ?? "opponents"} to confirm...
-        </p>
-      )}
-
-      {match.status === "awaiting_confirmation" && reportedWinnerIsThem && (
-        <div>
-          <p className="text-sm text-slate-400 mb-3">
-            {theirTeamName ?? "Opponents"} reported a win. Do you confirm?
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={onConfirm}
-              disabled={loading}
-              className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-            >
-              Confirm
-            </button>
-            <button
-              onClick={onDispute}
-              disabled={loading}
-              className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-            >
-              Dispute
-            </button>
-          </div>
-        </div>
-      )}
-
       {message && (
         <p className="text-xs text-slate-400 mt-3 text-center">{message}</p>
+      )}
+
+      {/* Report confirmation dialog */}
+      {reportDialog && (
+        <ConfirmDialog
+          title={reportDialog.result === "win" ? "Report Game Win?" : "Report Game Loss?"}
+          message={`You're reporting that ${reportDialog.result === "win" ? (myTeamName ?? "your team") : (theirTeamName ?? "the opponents")} won Game ${reportDialog.gameNumber}. The opposing team will need to confirm.`}
+          confirmLabel="Report"
+          danger={reportDialog.result === "loss"}
+          onConfirm={() => {
+            const d = reportDialog;
+            setReportDialog(null);
+            onReportGame(d.gameNumber, d.result);
+          }}
+          onCancel={() => setReportDialog(null)}
+        />
       )}
     </div>
   );
@@ -1036,6 +1220,7 @@ export default function Tournament() {
   const [history,             setHistory]             = useState<TournamentSummary[]>([]);
   const [historyOpen,         setHistoryOpen]         = useState(false);
   const [viewingId,           setViewingId]           = useState<number | null>(null);
+  const reportMsgTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isAdminRef      = useRef(isAdmin);
   const fetchAdminDataRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -1161,6 +1346,9 @@ export default function Tournament() {
               );
             }
             if (isAdminRef.current) fetchAdminDataRef.current();
+          } else if (msg.event === "game_reported" || msg.event === "game_confirmed" || msg.event === "counterpick_set") {
+            fetchMyMatchRef.current();
+            if (msg.event === "game_confirmed") fetchDataRef.current();
           } else if (msg.event === "match_reported") {
             fetchDataRef.current();
             fetchMyMatchRef.current();
@@ -1257,50 +1445,90 @@ export default function Tournament() {
     fetchAdminData();
   }, [fetchData, fetchAdminData]);
 
-  const handleReport = useCallback(async (result: "win" | "loss") => {
+  const setMsg = useCallback((msg: string | null) => {
+    setReportMsg(msg);
+    if (reportMsgTimerRef.current) clearTimeout(reportMsgTimerRef.current);
+    if (msg) reportMsgTimerRef.current = setTimeout(() => setReportMsg(null), 5000);
+  }, []);
+
+  const handleReportGame = useCallback(async (gameNumber: number, result: "win" | "loss") => {
     if (!GUILD_ID) return;
     setReportLoading(true);
-    setReportMsg(null);
+    setMsg(null);
     try {
-      const { data: res } = await axios.post(`${API_URL}/api/tournament/report`, { guild_id: GUILD_ID, result }, { withCredentials: true });
-      setReportMsg(res.message);
+      const { data: res } = await axios.post(
+        `${API_URL}/api/tournament/report-game`,
+        { guild_id: GUILD_ID, game_number: gameNumber, result },
+        { withCredentials: true }
+      );
+      setMsg(res.message);
       if (res.ok) fetchMyMatch();
     } catch {
-      setReportMsg("Failed to report result. Try again.");
+      setMsg("Failed to report result. Try again.");
     } finally {
       setReportLoading(false);
     }
-  }, [fetchMyMatch]);
+  }, [fetchMyMatch, setMsg]);
 
-  const handleConfirm = useCallback(async () => {
+  const handleConfirmGame = useCallback(async (gameNumber: number) => {
     if (!myMatch) return;
     setReportLoading(true);
-    setReportMsg(null);
+    setMsg(null);
     try {
-      const { data: res } = await axios.post(`${API_URL}/api/tournament/confirm`, { match_id: myMatch.id }, { withCredentials: true });
-      setReportMsg(res.message);
-      if (res.ok) { setMyMatch(null); fetchData(); }
+      const { data: res } = await axios.post(
+        `${API_URL}/api/tournament/confirm-game`,
+        { match_id: myMatch.id, game_number: gameNumber },
+        { withCredentials: true }
+      );
+      setMsg(res.message);
+      if (res.ok) {
+        if (res.series_complete) { setMyMatch(null); fetchData(); }
+        else fetchMyMatch();
+      }
     } catch {
-      setReportMsg("Failed to confirm. Try again.");
+      setMsg("Failed to confirm. Try again.");
     } finally {
       setReportLoading(false);
     }
-  }, [myMatch, fetchData]);
+  }, [myMatch, fetchData, fetchMyMatch, setMsg]);
 
-  const handleDispute = useCallback(async () => {
+  const handleDisputeGame = useCallback(async (gameNumber: number) => {
     if (!myMatch) return;
     setReportLoading(true);
-    setReportMsg(null);
+    setMsg(null);
     try {
-      const { data: res } = await axios.post(`${API_URL}/api/tournament/dispute`, { match_id: myMatch.id }, { withCredentials: true });
-      setReportMsg(res.message);
+      const { data: res } = await axios.post(
+        `${API_URL}/api/tournament/dispute-game`,
+        { match_id: myMatch.id, game_number: gameNumber },
+        { withCredentials: true }
+      );
+      setMsg(res.message);
       if (res.ok) fetchMyMatch();
     } catch {
-      setReportMsg("Failed to dispute. Try again.");
+      setMsg("Failed to dispute. Try again.");
     } finally {
       setReportLoading(false);
     }
-  }, [myMatch, fetchMyMatch]);
+  }, [myMatch, fetchMyMatch, setMsg]);
+
+  const handleCounterpick = useCallback(async (gameNumber: number, stage: string) => {
+    if (!myMatch) return;
+    setReportLoading(true);
+    setMsg(null);
+    try {
+      const { data: res } = await axios.post(
+        `${API_URL}/api/tournament/counterpick`,
+        { match_id: myMatch.id, game_number: gameNumber, stage_name: stage },
+        { withCredentials: true }
+      );
+      setMsg(res.message);
+      if (res.ok) fetchMyMatch();
+    } catch {
+      setMsg("Failed to lock in counterpick. Try again.");
+    } finally {
+      setReportLoading(false);
+    }
+  }, [myMatch, fetchMyMatch, setMsg]);
 
   const handleAdminCancel = useCallback(() => {
     setData(null);
@@ -1472,9 +1700,10 @@ export default function Tournament() {
             opponentMatchId={opponentMatchId}
             loading={reportLoading}
             message={reportMsg}
-            onReport={handleReport}
-            onConfirm={handleConfirm}
-            onDispute={handleDispute}
+            onReportGame={handleReportGame}
+            onConfirmGame={handleConfirmGame}
+            onDisputeGame={handleDisputeGame}
+            onCounterpick={handleCounterpick}
           />
         )}
 

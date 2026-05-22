@@ -69,6 +69,15 @@ function useRibbonKeyframes() {
         0%, 100% { opacity: 0.55; }
         50%      { opacity: 0.90; }
       }
+      @keyframes splRibbonAccentCycle {
+        0%   { background-position: 0% center; }
+        100% { background-position: 200% center; }
+      }
+      .spl-ribbon-accent-cycle {
+        background: linear-gradient(90deg, rgba(59,130,246,0.65), rgba(145,70,255,0.65), rgba(99,179,255,0.65), rgba(145,70,255,0.65), rgba(59,130,246,0.65));
+        background-size: 200% auto;
+        animation: splRibbonAccentCycle 5s linear infinite;
+      }
       @keyframes splRibbonScan {
         0%   { transform: translateX(-100%); opacity: 0; }
         10%  { opacity: 1; }
@@ -422,16 +431,8 @@ export default function OverlayRibbon() {
           }}
         />
 
-        {/* Top accent */}
-        <div style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          background: "linear-gradient(to right, transparent, rgba(145,70,255,0.7) 30%, rgba(145,70,255,0.7) 70%, transparent)",
-          pointerEvents: "none",
-        }} />
+        {/* Top accent — cycling blue/purple */}
+        <div className="spl-ribbon-accent-cycle" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, pointerEvents: "none" }} />
 
         {/* Icon */}
         <div
@@ -538,20 +539,23 @@ export default function OverlayRibbon() {
           />
         )}
 
-        {/* Subtle top accent line */}
-        <div style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 2,
-          background: isLive
-            ? "linear-gradient(to right, transparent, rgba(239,68,68,0.55) 30%, rgba(239,68,68,0.55) 70%, transparent)"
-            : isComplete
-            ? "linear-gradient(to right, transparent, rgba(52,211,153,0.40) 30%, rgba(52,211,153,0.40) 70%, transparent)"
-            : "linear-gradient(to right, transparent, rgba(255,255,255,0.08) 30%, rgba(255,255,255,0.08) 70%, transparent)",
-          pointerEvents: "none",
-        }} />
+        {/* Cycling top accent line */}
+        <div
+          className={!isLive && !isComplete ? "spl-ribbon-accent-cycle" : undefined}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 2,
+            background: isLive
+              ? "linear-gradient(to right, transparent, rgba(239,68,68,0.55) 30%, rgba(239,68,68,0.55) 70%, transparent)"
+              : isComplete
+              ? "linear-gradient(to right, transparent, rgba(52,211,153,0.40) 30%, rgba(52,211,153,0.40) 70%, transparent)"
+              : undefined,
+            pointerEvents: "none",
+          }}
+        />
 
         {/* Team 1 player ticker */}
         <PlayerTicker team={match.team1} align="left" />
@@ -614,10 +618,6 @@ export default function OverlayRibbon() {
         {/* Team 2 player ticker */}
         <PlayerTicker team={match.team2} align="right" />
 
-        <Divider />
-
-        {/* Stage + messages ticker */}
-        <InfoTicker stageName={stageName} modeData={modeData} stageData={stageData} stageKey={stageKey} />
     </div>
   );
 }

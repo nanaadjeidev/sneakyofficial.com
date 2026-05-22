@@ -36,6 +36,25 @@ async def _ensure_is_sub_column(cur) -> None:
             raise
 
 
+async def _ensure_match_games_table(cur) -> None:
+    """Create tournament_match_games for per-game results if it doesn't exist."""
+    await cur.execute("""
+        CREATE TABLE IF NOT EXISTS tournament_match_games (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          match_id INT NOT NULL,
+          game_number INT NOT NULL,
+          winner_team_id INT NOT NULL,
+          reported_by_discord BIGINT,
+          confirmed_by_discord BIGINT,
+          status ENUM('pending','confirmed','disputed') DEFAULT 'pending',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_match_game (match_id, game_number),
+          FOREIGN KEY (match_id) REFERENCES tournament_matches(id) ON DELETE CASCADE,
+          FOREIGN KEY (winner_team_id) REFERENCES tournament_teams(id)
+        )
+    """)
+
+
 async def _ensure_round_games_match_id(cur) -> None:
     """Add match_id column to tournament_round_games for per-match map storage.
     0 = round-level (schedule), non-zero = match-specific counterpick."""
@@ -723,15 +742,87 @@ class TournamentManager:
                 )
                 sched = await cur.fetchone()
                 match["schedule"] = dict(sched) if sched else None
+                best_of = sched["best_of"] if sched and sched.get("best_of") else 1
 
-                # Fetch per-match game stages (counterpick maps)
+                # Fetch game stages: round-level defaults AND match-specific overrides (override wins)
+                await _ensure_round_games_match_id(cur)
                 await cur.execute(
-                    "SELECT game_number, stage_name FROM tournament_round_games "
-                    "WHERE tournament_id = %s AND round = %s AND match_id = %s "
-                    "ORDER BY game_number",
+                    """SELECT game_number, stage_name, match_id FROM tournament_round_games
+                       WHERE tournament_id = %s AND round = %s AND (match_id = 0 OR match_id = %s)
+                       ORDER BY game_number ASC, match_id DESC""",
                     (tournament_id, match["round"], match["id"])
                 )
-                match["games"] = [dict(g) for g in await cur.fetchall()]
+                game_rows = await cur.fetchall()
+                seen_games: set[int] = set()
+                games: list[dict] = []
+                for g in game_rows:
+                    if g["game_number"] not in seen_games:
+                        games.append({"game_number": g["game_number"], "stage_name": g["stage_name"]})
+                        seen_games.add(g["game_number"])
+                match["games"] = games
+
+                # Fetch per-game results
+                await _ensure_match_games_table(cur)
+                await cur.execute(
+                    """SELECT game_number, winner_team_id FROM tournament_match_games
+                       WHERE match_id = %s AND status = 'confirmed' ORDER BY game_number""",
+                    (match["id"],)
+                )
+                game_results = [dict(r) for r in await cur.fetchall()]
+                match["game_results"] = game_results
+
+                # Fetch pending game (awaiting confirmation)
+                await cur.execute(
+                    """SELECT game_number, winner_team_id AS reported_winner_id FROM tournament_match_games
+                       WHERE match_id = %s AND status = 'pending' ORDER BY game_number DESC LIMIT 1""",
+                    (match["id"],)
+                )
+                pending_row = await cur.fetchone()
+                match["pending_game"] = dict(pending_row) if pending_row else None
+
+                # Compute scores and series state
+                t1_wins = sum(1 for r in game_results if r["winner_team_id"] == match["team1_id"])
+                t2_wins = sum(1 for r in game_results if r["winner_team_id"] == match["team2_id"])
+                match["team1_games"] = t1_wins
+                match["team2_games"] = t2_wins
+
+                wins_needed = math.ceil(best_of / 2)
+                series_complete = t1_wins >= wins_needed or t2_wins >= wins_needed
+
+                confirmed_count = len(game_results)
+                if match["pending_game"]:
+                    match["current_game_number"] = match["pending_game"]["game_number"]
+                else:
+                    match["current_game_number"] = confirmed_count + 1
+
+                # Determine counterpick state
+                match["needs_counterpick"] = False
+                match["opponent_needs_counterpick"] = False
+                match["counterpick_game_number"] = None
+
+                if not series_complete and match["pending_game"] is None:
+                    next_game = confirmed_count + 1
+                    if next_game > best_of:
+                        pass  # series over
+                    else:
+                        # Who picks for next_game?
+                        if next_game == 1:
+                            picker_team_id = match["home_team_id"]
+                        elif game_results:
+                            last_winner = game_results[-1]["winner_team_id"]
+                            picker_team_id = match["team2_id"] if last_winner == match["team1_id"] else match["team1_id"]
+                        else:
+                            picker_team_id = match["home_team_id"]
+
+                        # Check if map is already set for next_game
+                        map_set = any(
+                            g["game_number"] == next_game and g["stage_name"]
+                            for g in games
+                        )
+                        if not map_set and picker_team_id is not None:
+                            match["counterpick_game_number"] = next_game
+                            match["needs_counterpick"] = (team_id == picker_team_id)
+                            match["opponent_needs_counterpick"] = (team_id != picker_team_id)
 
             return match
 
@@ -921,6 +1012,311 @@ class TournamentManager:
                 (match_id,)
             )
         return True, "⚠️ Result disputed. An admin needs to resolve this match manually."
+
+    # ------------------------------------------------------------------ #
+    #  Game-by-game reporting                                              #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    async def report_game_win(
+        match_id: int,
+        game_number: int,
+        winner_team_id: int,
+        reporter_discord: Optional[int] = None,
+    ) -> tuple[bool, str]:
+        """Report the winner of a single game within a match."""
+        async with DBContextManager() as cur:
+            await _ensure_match_games_table(cur)
+
+            await cur.execute(
+                "SELECT status, tournament_id, team1_id, team2_id FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return False, "Match not found."
+            if row[0] == "complete":
+                return False, "This match is already complete."
+            if row[0] == "awaiting_confirmation":
+                return False, "A game result is already awaiting confirmation."
+            tournament_id = row[1]
+            team1_id, team2_id = row[2], row[3]
+
+            if winner_team_id not in (team1_id, team2_id):
+                return False, "Winner must be one of the two teams in this match."
+
+            # Validate game_number is the next expected game
+            await cur.execute(
+                "SELECT COUNT(*) FROM tournament_match_games WHERE match_id = %s AND status = 'confirmed'",
+                (match_id,)
+            )
+            confirmed_count = (await cur.fetchone())[0]
+            if game_number != confirmed_count + 1:
+                return False, f"Expected to report game {confirmed_count + 1}, not game {game_number}."
+
+            # Check for existing non-disputed entry
+            await cur.execute(
+                "SELECT status FROM tournament_match_games WHERE match_id = %s AND game_number = %s",
+                (match_id, game_number)
+            )
+            existing = await cur.fetchone()
+            if existing:
+                if existing[0] == "pending":
+                    return False, "A result for this game is already reported — awaiting confirmation."
+                elif existing[0] == "confirmed":
+                    return False, "This game result is already confirmed."
+                # disputed: allow re-report
+                await cur.execute(
+                    """UPDATE tournament_match_games
+                       SET winner_team_id = %s, reported_by_discord = %s, status = 'pending'
+                       WHERE match_id = %s AND game_number = %s""",
+                    (winner_team_id, reporter_discord, match_id, game_number)
+                )
+            else:
+                await cur.execute(
+                    """INSERT INTO tournament_match_games (match_id, game_number, winner_team_id, reported_by_discord)
+                       VALUES (%s, %s, %s, %s)""",
+                    (match_id, game_number, winner_team_id, reporter_discord)
+                )
+
+            await cur.execute(
+                "UPDATE tournament_matches SET status = 'awaiting_confirmation' WHERE id = %s",
+                (match_id,)
+            )
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "game_reported",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "game_number": game_number,
+            "winner_team_id": winner_team_id,
+        })
+        return True, f"Game {game_number} result reported! Waiting for the opposing team to confirm."
+
+    @staticmethod
+    async def confirm_game_win(
+        match_id: int,
+        game_number: int,
+        confirmer_discord: Optional[int] = None,
+    ) -> tuple[bool, str, bool]:
+        """Confirm a pending game result. Returns (ok, msg, series_complete)."""
+        from backend.util.config import global_config
+        async with DBContextManager() as cur:
+            await _ensure_match_games_table(cur)
+
+            await cur.execute(
+                "SELECT winner_team_id FROM tournament_match_games WHERE match_id = %s AND game_number = %s AND status = 'pending'",
+                (match_id, game_number)
+            )
+            game_row = await cur.fetchone()
+            if not game_row:
+                return False, "No pending game result to confirm.", False
+            winner_team_id = game_row[0]
+
+            await cur.execute(
+                "SELECT team1_id, team2_id, tournament_id, round, match_number FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            match = await cur.fetchone()
+            if not match:
+                return False, "Match not found.", False
+            team1_id, team2_id, tournament_id, rnd, match_num = match
+
+            opposing_team_id = team2_id if winner_team_id == team1_id else team1_id
+
+            is_admin = bool(confirmer_discord and confirmer_discord in global_config.tournament_admin_ids)
+            if not is_admin:
+                if confirmer_discord:
+                    await cur.execute(
+                        """SELECT 1 FROM tournament_team_members ttm
+                           JOIN tournament_signups s ON ttm.signup_id = s.id
+                           WHERE ttm.team_id = %s AND s.discord_id = %s""",
+                        (opposing_team_id, confirmer_discord)
+                    )
+                    if not await cur.fetchone():
+                        return False, "Only a member of the opposing team can confirm this result.", False
+
+            await cur.execute(
+                """UPDATE tournament_match_games
+                   SET status = 'confirmed', confirmed_by_discord = %s
+                   WHERE match_id = %s AND game_number = %s""",
+                (confirmer_discord, match_id, game_number)
+            )
+
+            # Compute updated scores
+            await cur.execute(
+                "SELECT winner_team_id FROM tournament_match_games WHERE match_id = %s AND status = 'confirmed'",
+                (match_id,)
+            )
+            all_results = await cur.fetchall()
+            t1_wins = sum(1 for r in all_results if r[0] == team1_id)
+            t2_wins = sum(1 for r in all_results if r[0] == team2_id)
+
+            # Update in-memory scores for overlay
+            TournamentManager.set_game_score(match_id, t1_wins, t2_wins)
+            game_results = TournamentManager.get_game_results(match_id)
+
+            await cur.execute(
+                "SELECT best_of FROM tournament_round_schedule WHERE tournament_id = %s AND round = %s",
+                (tournament_id, rnd)
+            )
+            sched = await cur.fetchone()
+            best_of = sched[0] if sched else 1
+            wins_needed = math.ceil(best_of / 2)
+
+            series_complete = t1_wins >= wins_needed or t2_wins >= wins_needed
+
+            if series_complete:
+                series_winner_id = team1_id if t1_wins >= wins_needed else team2_id
+                await cur.execute(
+                    "UPDATE tournament_matches SET winner_id = %s, status = 'complete' WHERE id = %s",
+                    (series_winner_id, match_id)
+                )
+                await TournamentManager._advance_winner(cur, tournament_id, rnd, match_num, series_winner_id)
+
+                await cur.execute(
+                    "SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
+                    (tournament_id,)
+                )
+                if not (await cur.fetchone())[0]:
+                    await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
+
+                await cur.execute("SELECT team_name FROM tournament_teams WHERE id = %s", (series_winner_id,))
+                name_row = await cur.fetchone()
+                winner_name = name_row[0] if name_row else "Unknown"
+            else:
+                # Series ongoing — set match back to pending so next game can be reported
+                await cur.execute("UPDATE tournament_matches SET status = 'pending' WHERE id = %s", (match_id,))
+                series_winner_id = None
+                winner_name = None
+
+        if series_complete:
+            try:
+                await _get_profile_manager().update_trueskill_for_match(match_id, series_winner_id)
+            except Exception as e:
+                logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        if series_complete:
+            await TournamentBroadcaster.get().broadcast({
+                "event": "match_complete",
+                "tournament_id": tournament_id,
+                "match_id": match_id,
+                "winner_team_id": series_winner_id,
+                "winner_name": winner_name,
+            })
+            return True, f"✅ Game confirmed! **{winner_name}** wins the series!", True
+        else:
+            await TournamentBroadcaster.get().broadcast({
+                "event": "game_confirmed",
+                "tournament_id": tournament_id,
+                "match_id": match_id,
+                "game_number": game_number,
+                "winner_team_id": winner_team_id,
+                "team1_games": t1_wins,
+                "team2_games": t2_wins,
+                "game_results": game_results,
+            })
+            return True, f"Game {game_number} confirmed!", False
+
+    @staticmethod
+    async def dispute_game(match_id: int, game_number: int) -> tuple[bool, str]:
+        """Dispute a pending game result."""
+        async with DBContextManager() as cur:
+            await _ensure_match_games_table(cur)
+            await cur.execute(
+                "SELECT id FROM tournament_match_games WHERE match_id = %s AND game_number = %s AND status = 'pending'",
+                (match_id, game_number)
+            )
+            if not await cur.fetchone():
+                return False, "No pending game result to dispute."
+            await cur.execute(
+                """UPDATE tournament_match_games SET status = 'disputed'
+                   WHERE match_id = %s AND game_number = %s""",
+                (match_id, game_number)
+            )
+            await cur.execute(
+                "UPDATE tournament_matches SET status = 'pending' WHERE id = %s",
+                (match_id,)
+            )
+        return True, "⚠️ Game result disputed. Re-report the result when resolved."
+
+    @staticmethod
+    async def player_set_counterpick(
+        match_id: int,
+        game_number: int,
+        stage_name: str,
+        picker_discord: Optional[int] = None,
+    ) -> tuple[bool, str]:
+        """Player locks in the counterpick stage for an upcoming game."""
+        from backend.util.config import global_config
+        async with DBContextManager() as cur:
+            await _ensure_match_games_table(cur)
+            await _ensure_round_games_match_id(cur)
+
+            await cur.execute(
+                "SELECT tournament_id, round, team1_id, team2_id, home_team_id, status FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            match = await cur.fetchone()
+            if not match:
+                return False, "Match not found."
+            tournament_id, rnd, team1_id, team2_id, home_team_id, status = match
+            if status == "complete":
+                return False, "Match is already complete."
+            if status == "awaiting_confirmation":
+                return False, "Awaiting game confirmation — counterpick will be available after."
+
+            is_admin = bool(picker_discord and picker_discord in global_config.tournament_admin_ids)
+
+            if not is_admin:
+                # Verify picker is in this match
+                await cur.execute(
+                    """SELECT ttm.team_id FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON ttm.signup_id = s.id
+                       WHERE s.tournament_id = %s AND s.discord_id = %s LIMIT 1""",
+                    (tournament_id, picker_discord)
+                )
+                team_row = await cur.fetchone()
+                if not team_row or team_row[0] not in (team1_id, team2_id):
+                    return False, "You are not a participant in this match."
+                picker_team_id = team_row[0]
+
+                # Determine who is authorised to pick for this game
+                if game_number == 1:
+                    authorised_team_id = home_team_id
+                else:
+                    await cur.execute(
+                        "SELECT winner_team_id FROM tournament_match_games WHERE match_id = %s AND game_number = %s AND status = 'confirmed'",
+                        (match_id, game_number - 1)
+                    )
+                    prev_result = await cur.fetchone()
+                    if not prev_result:
+                        return False, f"Game {game_number - 1} has not been confirmed yet."
+                    prev_winner = prev_result[0]
+                    authorised_team_id = team2_id if prev_winner == team1_id else team1_id
+
+                if picker_team_id != authorised_team_id:
+                    return False, "It is not your team's turn to pick a map."
+
+            await cur.execute(
+                """INSERT INTO tournament_round_games (tournament_id, round, match_id, game_number, stage_name)
+                   VALUES (%s, %s, %s, %s, %s)
+                   ON DUPLICATE KEY UPDATE stage_name = VALUES(stage_name)""",
+                (tournament_id, rnd, match_id, game_number, stage_name)
+            )
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "counterpick_set",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "game_number": game_number,
+            "stage_name": stage_name,
+        })
+        label = "Home pick" if game_number == 1 else "Counterpick"
+        return True, f"{label} locked in: {stage_name} for Game {game_number}."
 
     # ------------------------------------------------------------------ #
     #  Admin team pre-assignment                                           #
