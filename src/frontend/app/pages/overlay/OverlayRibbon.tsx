@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import axios from "axios";
-import { MODES, STAGES } from "../../components/tournament/splatoonData";
+import { STAGES } from "../../components/tournament/splatoonData";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
@@ -288,107 +288,6 @@ function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) 
   );
 }
 
-const TICKER_MESSAGES = [
-  { type: "msg" as const, text: "Have you joined the Sneaky Discord? Type !discord in chat!" },
-  { type: "msg" as const, text: "Follow twitch.tv/sneakyonnightmode to catch every stream!" },
-  { type: "msg" as const, text: "Enjoying the tournament? Type !discord for the community server!" },
-];
-
-function InfoTicker({ stageName, modeData, stageData, stageKey }: {
-  stageName: string | null;
-  modeData: { icon: string; name: string } | null | undefined;
-  stageData: { image: string } | null | undefined;
-  stageKey: number;
-}) {
-  type Item = { type: "stage" } | { type: "msg"; text: string };
-  const items: Item[] = [
-    { type: "stage" },
-    ...TICKER_MESSAGES,
-  ];
-
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    const t = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        setIdx((i) => (i + 1) % items.length);
-        setVisible(true);
-      }, 350);
-    }, 5000);
-    return () => clearInterval(t);
-  }, [items.length]);
-
-  // When stage changes, snap back to stage item
-  const prevStageKey = useRef(stageKey);
-  useEffect(() => {
-    if (stageKey !== prevStageKey.current) {
-      prevStageKey.current = stageKey;
-      setVisible(false);
-      setTimeout(() => { setIdx(0); setVisible(true); }, 350);
-    }
-  }, [stageKey]);
-
-  const item = items[idx];
-
-  return (
-    <div style={{
-      flexShrink: 0,
-      width: "clamp(120px, 18vw, 260px)",
-      display: "flex",
-      alignItems: "center",
-      gap: "0.6vw",
-      overflow: "hidden",
-    }}>
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "0.5vw",
-        opacity: visible ? 1 : 0,
-        transform: visible ? "translateX(0)" : "translateX(6px)",
-        transition: "opacity 0.35s ease, transform 0.35s ease",
-        width: "100%",
-      }}>
-        {item.type === "stage" ? (
-          <>
-            {stageData && (
-              <div style={{
-                width: "clamp(36px, 4.5vw, 56px)",
-                height: "clamp(20px, 2.5vw, 32px)",
-                borderRadius: "0.3vw",
-                overflow: "hidden",
-                border: "1px solid rgba(255,255,255,0.12)",
-                flexShrink: 0,
-              }}>
-                <img src={stageData.image} alt={stageName ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              </div>
-            )}
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.2vh", minWidth: 0 }}>
-              {modeData && (
-                <div style={{ display: "flex", alignItems: "center", gap: "0.4vw" }}>
-                  <img src={modeData.icon} alt={modeData.name}
-                    style={{ width: "clamp(9px, 1vw, 12px)", height: "clamp(9px, 1vw, 12px)", objectFit: "contain", opacity: 0.65 }} />
-                  <span style={{ fontSize: "clamp(7px, 0.8vw, 9px)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: "rgba(255,255,255,0.40)", lineHeight: 1 }}>
-                    {modeData.name}
-                  </span>
-                </div>
-              )}
-              <span style={{ fontSize: "clamp(8px, 0.95vw, 11px)", fontWeight: 600, color: stageName ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.22)", fontStyle: stageName ? "normal" : "italic", lineHeight: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {stageName ?? "Counterpick pending…"}
-              </span>
-            </div>
-          </>
-        ) : (
-          <span style={{ fontSize: "clamp(8px, 0.95vw, 11px)", fontWeight: 600, color: "rgba(145,70,255,0.85)", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {item.text}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function OverlayRibbon() {
   useRibbonKeyframes();
 
@@ -490,7 +389,6 @@ export default function OverlayRibbon() {
   const bestOf       = match.best_of ?? 1;
   const winsNeeded   = Math.ceil(bestOf / 2);
   const currentGame  = match.team1_games + match.team2_games + 1;
-  const modeData     = match.mode_name ? MODES.find((m) => m.name === match.mode_name) : null;
   const roundLabel   = getRoundLabel(match.round, match.total_rounds);
   const isComplete   = match.status === "complete";
   const isT1Winner   = isComplete && match.team1_games > match.team2_games;
