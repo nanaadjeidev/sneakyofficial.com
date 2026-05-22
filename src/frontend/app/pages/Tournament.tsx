@@ -76,6 +76,7 @@ interface Team {
   name: string;
   seed: number;
   members: string[];
+  captain?: string | null;
 }
 
 interface Match {
@@ -730,12 +731,20 @@ function TeamModal({ team, rounds, onClose }: { team: Team; rounds: Round[]; onC
           <div>
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Players</h3>
             <div className="flex flex-col gap-1.5">
-              {team.members.map((m) => (
-                <div key={m} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/40">
-                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span className="text-sm text-slate-200">{m}</span>
-                </div>
-              ))}
+              {(team.captain
+                ? [team.captain, ...team.members.filter((m) => m !== team.captain)]
+                : team.members
+              ).map((m) => {
+                const isCaptain = m === team.captain;
+                return (
+                  <div key={m} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/40">
+                    {isCaptain
+                      ? <Crown className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+                      : <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />}
+                    <span className={`text-sm ${isCaptain ? "text-yellow-300 font-semibold" : "text-slate-200"}`}>{m}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

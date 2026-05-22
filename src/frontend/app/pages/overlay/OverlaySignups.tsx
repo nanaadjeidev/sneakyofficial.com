@@ -348,7 +348,10 @@ export default function OverlaySignups() {
                 {team.name}
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "0.25vh" }}>
-                {team.members.map((m) => (
+                {(team.captain
+                  ? [team.captain, ...team.members.filter((m) => m !== team.captain)]
+                  : team.members
+                ).map((m) => (
                   <span key={m} style={{
                     fontSize: "clamp(8px, 1.1vw, 11px)",
                     color: m === team.captain ? "rgba(167,139,250,0.90)" : "rgba(255,255,255,0.50)",
