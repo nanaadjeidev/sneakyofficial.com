@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, Trophy, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
+import { Plus, Trash2, Lock, X, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 import { STAGES, MODES } from "./splatoonData";
 
