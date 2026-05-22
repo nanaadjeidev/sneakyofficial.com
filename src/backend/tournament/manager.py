@@ -167,7 +167,7 @@ class TournamentManager:
     @staticmethod
     @staticmethod
     async def _fetch_team(cur, team_id: int) -> dict:
-        await cur.execute("SELECT team_name, captain_discord_id, tournament_id FROM tournament_teams WHERE id = %s", (team_id,))
+        await cur.execute("SELECT team_name, captain_discord_id, captain_signup_id, tournament_id FROM tournament_teams WHERE id = %s", (team_id,))
         team_row = await cur.fetchone()
         await cur.execute(
             """SELECT s.display_name FROM tournament_team_members ttm
@@ -177,14 +177,23 @@ class TournamentManager:
         )
         members = [r["display_name"] for r in await cur.fetchall()]
         captain = None
-        if team_row and team_row["captain_discord_id"]:
-            await cur.execute(
-                "SELECT display_name FROM tournament_signups WHERE discord_id = %s AND tournament_id = %s LIMIT 1",
-                (team_row["captain_discord_id"], team_row["tournament_id"])
-            )
-            cap_row = await cur.fetchone()
-            if cap_row:
-                captain = cap_row["display_name"]
+        if team_row:
+            if team_row["captain_signup_id"]:
+                await cur.execute(
+                    "SELECT display_name FROM tournament_signups WHERE id = %s LIMIT 1",
+                    (team_row["captain_signup_id"],)
+                )
+                cap_row = await cur.fetchone()
+                if cap_row:
+                    captain = cap_row["display_name"]
+            if not captain and team_row["captain_discord_id"]:
+                await cur.execute(
+                    "SELECT display_name FROM tournament_signups WHERE discord_id = %s AND tournament_id = %s LIMIT 1",
+                    (team_row["captain_discord_id"], team_row["tournament_id"])
+                )
+                cap_row = await cur.fetchone()
+                if cap_row:
+                    captain = cap_row["display_name"]
         if not captain and members:
             captain = members[0]
         return {"id": team_id, "name": team_row["team_name"] if team_row else "Unknown", "members": members, "captain": captain}
@@ -506,7 +515,7 @@ class TournamentManager:
 
             # Collect pre-created teams
             await cur.execute(
-                """SELECT tt.id, tt.team_name, tt.captain_discord_id,
+                """SELECT tt.id, tt.team_name, tt.captain_discord_id, tt.captain_signup_id,
                           GROUP_CONCAT(s.id ORDER BY s.signed_up_at SEPARATOR ',') AS signup_ids,
                           GROUP_CONCAT(s.display_name ORDER BY s.signed_up_at SEPARATOR '||') AS member_names
                    FROM tournament_teams tt
@@ -524,13 +533,13 @@ class TournamentManager:
             assigned_signup_ids: set[int] = set()
 
             for row in pre_teams_raw:
-                team_id, tname, cap_id, sids_str, mnames_str = row
+                team_id, tname, cap_discord_id, cap_signup_id, sids_str, mnames_str = row
                 member_names = mnames_str.split("||") if mnames_str else []
                 sids = [int(x) for x in sids_str.split(",") if x]
                 assigned_signup_ids.update(sids)
                 used_names.add(tname)
                 team_ids.append(team_id)
-                teams_info.append({"id": team_id, "name": tname, "members": member_names, "captain_discord_id": cap_id})
+                teams_info.append({"id": team_id, "name": tname, "members": member_names, "captain_discord_id": cap_discord_id})
                 # Mark as no longer pre-created (now locked)
                 await cur.execute("UPDATE tournament_teams SET is_pre_created = FALSE WHERE id = %s", (team_id,))
 
@@ -550,8 +559,9 @@ class TournamentManager:
                 used_names.add(gen_name)
                 seed = len(team_ids) + 1
 
-                # Captain = first Discord-linked member
-                cap_id = None
+                # Captain = first member; prefer Discord-linked if available
+                cap_signup_id = members[0][0] if members else None
+                cap_discord_id = None
                 for sid, _ in members:
                     await cur.execute(
                         "SELECT discord_id FROM tournament_signups WHERE id = %s AND discord_id IS NOT NULL",
@@ -559,14 +569,15 @@ class TournamentManager:
                     )
                     r = await cur.fetchone()
                     if r:
-                        cap_id = r[0]
+                        cap_discord_id = r[0]
+                        cap_signup_id = sid
                         break
 
                 await cur.execute(
                     """INSERT INTO tournament_teams
-                       (tournament_id, team_name, seed, captain_discord_id, is_pre_created)
-                       VALUES (%s, %s, %s, %s, FALSE)""",
-                    (tid, gen_name, seed, cap_id)
+                       (tournament_id, team_name, seed, captain_discord_id, captain_signup_id, is_pre_created)
+                       VALUES (%s, %s, %s, %s, %s, FALSE)""",
+                    (tid, gen_name, seed, cap_discord_id, cap_signup_id)
                 )
                 team_id = cur.lastrowid
                 team_ids.append(team_id)
@@ -1445,24 +1456,24 @@ class TournamentManager:
 
                 team_name = team.get("name") or _generate_team_name(used_names_this_save)
                 used_names_this_save.add(team_name.lower())
-                captain_id = None
+                captain_signup_id = None
+                captain_discord_id = None
 
-                # Use admin-designated captain if provided
+                # Use admin-designated captain directly by signup id
                 explicit_captain_signup_id = team.get("captain_signup_id")
-                logger.info("save_pre_teams: team=%r captain_signup_id=%r", team_name, explicit_captain_signup_id)
                 if explicit_captain_signup_id:
+                    captain_signup_id = int(explicit_captain_signup_id)
+                    # Also grab discord_id if available (for bot commands)
                     await cur.execute(
                         "SELECT discord_id FROM tournament_signups WHERE id = %s AND discord_id IS NOT NULL",
-                        (int(explicit_captain_signup_id),)
+                        (captain_signup_id,)
                     )
                     cap_row = await cur.fetchone()
-                    logger.info("save_pre_teams: discord_id lookup for signup %r -> %r", explicit_captain_signup_id, cap_row)
                     if cap_row:
-                        captain_id = cap_row[0]
+                        captain_discord_id = cap_row[0]
 
-                logger.info("save_pre_teams: final captain_id=%r for team=%r", captain_id, team_name)
-                # Fall back to first Discord-linked player
-                if captain_id is None and signup_ids:
+                # Fall back to first Discord-linked player for captain_discord_id
+                if captain_discord_id is None and signup_ids:
                     fmt = ",".join(["%s"] * len(signup_ids))
                     await cur.execute(
                         f"SELECT id, discord_id FROM tournament_signups WHERE id IN ({fmt}) AND discord_id IS NOT NULL ORDER BY signed_up_at LIMIT 1",
@@ -1470,13 +1481,15 @@ class TournamentManager:
                     )
                     cap_row = await cur.fetchone()
                     if cap_row:
-                        captain_id = cap_row[1]
+                        captain_discord_id = cap_row[1]
+                        if captain_signup_id is None:
+                            captain_signup_id = cap_row[0]
 
                 await cur.execute(
                     """INSERT INTO tournament_teams
-                       (tournament_id, team_name, seed, captain_discord_id, name_confirmed, is_pre_created)
-                       VALUES (%s, %s, %s, %s, %s, TRUE)""",
-                    (tournament_id, team_name, i + 1, captain_id, bool(team.get("name")))
+                       (tournament_id, team_name, seed, captain_discord_id, captain_signup_id, name_confirmed, is_pre_created)
+                       VALUES (%s, %s, %s, %s, %s, %s, TRUE)""",
+                    (tournament_id, team_name, i + 1, captain_discord_id, captain_signup_id, bool(team.get("name")))
                 )
                 team_id = cur.lastrowid
                 saved += 1
@@ -1636,9 +1649,12 @@ class TournamentManager:
             await cur.execute(
                 """SELECT tt.id, tt.team_name, tt.seed, tt.captain_discord_id,
                           GROUP_CONCAT(s.display_name ORDER BY s.signed_up_at SEPARATOR '||') AS members,
-                          (SELECT s2.display_name FROM tournament_signups s2
-                           WHERE s2.tournament_id = tt.tournament_id
-                             AND s2.discord_id = tt.captain_discord_id LIMIT 1) AS captain_name
+                          COALESCE(
+                            (SELECT s2.display_name FROM tournament_signups s2 WHERE s2.id = tt.captain_signup_id LIMIT 1),
+                            (SELECT s2.display_name FROM tournament_signups s2
+                             WHERE s2.tournament_id = tt.tournament_id
+                               AND s2.discord_id = tt.captain_discord_id LIMIT 1)
+                          ) AS captain_name
                    FROM tournament_teams tt
                    JOIN tournament_team_members ttm ON ttm.team_id = tt.id
                    JOIN tournament_signups s ON s.id = ttm.signup_id

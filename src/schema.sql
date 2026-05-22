@@ -120,9 +120,11 @@ tournament_id INT NOT NULL,
 team_name VARCHAR(100) NOT NULL,
 seed INT NOT NULL,
 captain_discord_id BIGINT,
+captain_signup_id INT,
 name_confirmed BOOLEAN DEFAULT FALSE,
 is_pre_created BOOLEAN DEFAULT FALSE,
 FOREIGN KEY (tournament_id) REFERENCES tournaments(id) ON DELETE CASCADE,
+FOREIGN KEY (captain_signup_id) REFERENCES tournament_signups(id) ON DELETE SET NULL,
 INDEX idx_tournament (tournament_id)
 );
 
