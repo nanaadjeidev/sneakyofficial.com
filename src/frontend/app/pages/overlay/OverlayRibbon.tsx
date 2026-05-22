@@ -216,32 +216,19 @@ const CROWN = (
   </svg>
 );
 
-function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) {
+function PlayerTicker({ team, align, tick, tickVisible }: { team: Team; align: "left" | "right"; tick: number; tickVisible: boolean }) {
   const members = team.captain
     ? [team.captain, ...team.members.filter((m) => m !== team.captain)]
     : team.members;
-  const [idx, setIdx] = useState(0);
-  const [visible, setVisible] = useState(true);
 
-  useEffect(() => {
-    if (members.length <= 1) return;
-    const t = setInterval(() => {
-      setVisible(false);
-      setTimeout(() => {
-        setIdx((i) => (i + 1) % members.length);
-        setVisible(true);
-      }, 280);
-    }, 2800);
-    return () => clearInterval(t);
-  }, [members.length]);
-
+  const idx = members.length > 0 ? tick % members.length : 0;
   const member = members[idx] ?? "";
   const isCaptain = member === team.captain;
 
   return (
     <div style={{
       flexShrink: 0,
-      width: "clamp(80px, 11vw, 160px)",
+      width: "clamp(100px, 14vw, 210px)",
       display: "flex",
       flexDirection: "column",
       alignItems: align === "left" ? "flex-end" : "flex-start",
@@ -263,8 +250,8 @@ function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) 
           alignItems: "center",
           gap: "0.35vw",
           flexDirection: align === "left" ? "row-reverse" : "row",
-          opacity: visible ? 1 : 0,
-          transform: visible ? "translateY(0)" : `translateY(${align === "left" ? "-" : ""}4px)`,
+          opacity: tickVisible ? 1 : 0,
+          transform: tickVisible ? "translateY(0)" : `translateY(${align === "left" ? "-" : ""}4px)`,
           transition: "opacity 0.28s ease, transform 0.28s ease",
         }}
       >
@@ -278,8 +265,7 @@ function PlayerTicker({ team, align }: { team: Team; align: "left" | "right" }) 
           textOverflow: "ellipsis",
           whiteSpace: "nowrap",
           lineHeight: 1,
-          maxWidth: "clamp(70px, 10vw, 145px)",
-          direction: align === "left" ? "rtl" : "ltr",
+          maxWidth: "clamp(90px, 13vw, 195px)",
         }}>
           {member}
         </span>
@@ -298,6 +284,27 @@ export default function OverlayRibbon() {
   }, []);
 
   const { match, scoreFlash, stageKey } = useMatchData();
+
+  // Shared ticker signal — both PlayerTicker components flip in sync
+  const [tickSignal, setTickSignal] = useState(0);
+  const [tickVisible, setTickVisible] = useState(true);
+
+  const maxMembers = match ? Math.max(
+    (match.team1.captain ? [match.team1.captain, ...match.team1.members.filter(m => m !== match.team1.captain)] : match.team1.members).length,
+    (match.team2.captain ? [match.team2.captain, ...match.team2.members.filter(m => m !== match.team2.captain)] : match.team2.members).length,
+  ) : 0;
+
+  useEffect(() => {
+    if (maxMembers <= 1) return;
+    const t = setInterval(() => {
+      setTickVisible(false);
+      setTimeout(() => {
+        setTickSignal((s) => s + 1);
+        setTickVisible(true);
+      }, 280);
+    }, 2800);
+    return () => clearInterval(t);
+  }, [maxMembers]);
 
   if (!match) {
     return (
@@ -459,7 +466,7 @@ export default function OverlayRibbon() {
         />
 
         {/* Team 1 player ticker */}
-        <PlayerTicker team={match.team1} align="left" />
+        <PlayerTicker team={match.team1} align="left" tick={tickSignal} tickVisible={tickVisible} />
 
         <Divider />
 
@@ -517,7 +524,7 @@ export default function OverlayRibbon() {
         <Divider />
 
         {/* Team 2 player ticker */}
-        <PlayerTicker team={match.team2} align="right" />
+        <PlayerTicker team={match.team2} align="right" tick={tickSignal} tickVisible={tickVisible} />
 
     </div>
   );

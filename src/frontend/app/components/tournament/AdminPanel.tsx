@@ -361,6 +361,7 @@ function AdminMatchReporter({ onRefresh, flash }: {
   const [mapsOpen, setMapsOpen] = useState<Record<number, boolean>>({});
   // matchId → gameNumber → stageName (local overrides shown after counterpick picks)
   const [gameStages, setGameStages] = useState<Record<number, Record<number, string | null>>>({});
+  const [gameReporting, setGameReporting] = useState<string | null>(null); // "matchId-gameNum"
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -444,6 +445,24 @@ function AdminMatchReporter({ onRefresh, flash }: {
     }
   };
 
+  const reportGame = async (matchId: number, gameNumber: number, winnerTeamId: number) => {
+    const key = `${matchId}-${gameNumber}`;
+    setGameReporting(key);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/report-game`,
+        { match_id: matchId, game_number: gameNumber, winner_team_id: winnerTeamId },
+        { withCredentials: true }
+      );
+      flash(data.message ?? "Game result set.", data.ok ?? true);
+      if (data.ok) await fetchMatches();
+    } catch {
+      flash("Failed to set game result.", false);
+    } finally {
+      setGameReporting(null);
+    }
+  };
+
   return (
     <div className="mb-4">
       <div className="flex items-center gap-2 mb-3">
@@ -523,19 +542,40 @@ function AdminMatchReporter({ onRefresh, flash }: {
                         const label = gm.game_number === 1
                           ? bestOf === 1 ? "Stage" : "G1 — Home pick"
                           : `G${gm.game_number} — Counterpick`;
+                        const gKey = `${m.id}-${gm.game_number}`;
+                        const gReporting = gameReporting === gKey;
                         return (
-                          <div key={gm.game_number} className="flex items-center gap-2">
-                            <span className="text-[10px] text-slate-600 shrink-0 w-28">{label}</span>
-                            <select
-                              value={gm.stage_name ?? ""}
-                              onChange={(e) => setGameStage(m.id, gm.game_number, e.target.value || null)}
-                              className="flex-1 text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-purple-500"
-                            >
-                              <option value="">? (not set)</option>
-                              {STAGES.map((s) => (
-                                <option key={s.name} value={s.name}>{s.name}</option>
-                              ))}
-                            </select>
+                          <div key={gm.game_number} className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-600 shrink-0 w-28">{label}</span>
+                              <select
+                                value={gm.stage_name ?? ""}
+                                onChange={(e) => setGameStage(m.id, gm.game_number, e.target.value || null)}
+                                className="flex-1 text-xs bg-slate-800 border border-slate-700 rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-purple-500"
+                              >
+                                <option value="">? (not set)</option>
+                                {STAGES.map((s) => (
+                                  <option key={s.name} value={s.name}>{s.name}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex items-center gap-1 pl-28">
+                              <span className="text-[10px] text-slate-600 shrink-0">Winner:</span>
+                              <button
+                                onClick={() => m.team1 && reportGame(m.id, gm.game_number, m.team1.id)}
+                                disabled={gReporting || !m.team1}
+                                className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/40 text-blue-300 hover:bg-blue-900/60 disabled:opacity-40 truncate"
+                              >
+                                {m.team1?.name ?? "T1"}
+                              </button>
+                              <button
+                                onClick={() => m.team2 && reportGame(m.id, gm.game_number, m.team2.id)}
+                                disabled={gReporting || !m.team2}
+                                className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-900/30 border border-purple-700/40 text-purple-300 hover:bg-purple-900/60 disabled:opacity-40 truncate"
+                              >
+                                {m.team2?.name ?? "T2"}
+                              </button>
+                            </div>
                           </div>
                         );
                       })}

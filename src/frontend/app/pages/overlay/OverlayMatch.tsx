@@ -161,7 +161,7 @@ function useMatchData() {
                 game_results: msg.game_results ?? prev.game_results,
               };
             });
-          } else if (msg.event === "counterpick_stage") {
+          } else if (msg.event === "counterpick_stage" || msg.event === "counterpick_set") {
             setMatch((prev) => {
               if (!prev || prev.match_id !== msg.match_id) return prev;
               const games = prev.games.map((g) =>
@@ -718,7 +718,7 @@ function CornerMatchOverlay({ match, scoreFlash, stageKey }: {
   return (
     <div data-overlay className="p-3" style={{ width: 360 }}>
       <div
-        className="rounded-2xl overflow-hidden"
+        className="rounded-2xl overflow-hidden relative"
         style={{
           background: "linear-gradient(160deg, rgba(10,10,24,0.90) 0%, rgba(7,7,18,0.87) 100%)",
           border: "1px solid rgba(255,255,255,0.09)",
@@ -765,7 +765,7 @@ function CornerMatchOverlay({ match, scoreFlash, stageKey }: {
                 <div
                   className="rounded-md overflow-hidden"
                   style={{
-                    width: 60, height: 34,
+                    width: 88, height: 28,
                     border: "1px solid rgba(255,255,255,0.14)",
                     boxShadow: "0 2px 8px rgba(0,0,0,0.55)",
                   }}
@@ -777,14 +777,14 @@ function CornerMatchOverlay({ match, scoreFlash, stageKey }: {
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <span className="text-[7px] text-white/32 font-medium truncate" style={{ maxWidth: 60 }}>
+                <span className="text-[7px] text-white/32 font-medium truncate" style={{ maxWidth: 88 }}>
                   {stageName}
                 </span>
               </div>
             ) : match.mode_name ? (
               <div
                 className="shrink-0 rounded-md flex items-center justify-center"
-                style={{ width: 60, height: 34, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
+                style={{ width: 88, height: 28, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}
               >
                 <span className="text-white/18 text-sm font-thin">?</span>
               </div>

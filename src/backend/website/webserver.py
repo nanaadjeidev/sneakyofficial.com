@@ -161,6 +161,8 @@ class WebServer:
             "/api/tournament/admin/game-score", self.sneaky_api.tournament_admin_game_score)
         self.app.router.add_post(
             "/api/tournament/admin/match-game-stage", self.sneaky_api.tournament_admin_set_match_game_stage)
+        self.app.router.add_post(
+            "/api/tournament/admin/report-game", self.sneaky_api.tournament_admin_report_game)
         self.app.router.add_get(
             "/api/tournament/overlay", self.sneaky_api.serve_overlay_data)
         self.app.router.add_get(

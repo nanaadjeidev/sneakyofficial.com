@@ -566,6 +566,20 @@ class SneakyApi:
         })
         return web.json_response({"ok": True})
 
+    @verify_tournament_admin
+    async def tournament_admin_report_game(self, request: Request, admin_id: int) -> web.Response:
+        """Admin force-sets a confirmed game result within a match, overwriting any existing record."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+            winner_team_id = int(body["winner_team_id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.admin_set_game_result(match_id, game_number, winner_team_id)
+        return web.json_response({"ok": ok, "message": msg})
+
     async def serve_overlay_upnext(self, request: Request) -> web.Response:
         """Return the next pending (unpinned) match for the 'up next' overlay."""
         guild_id_param = request.rel_url.query.get("guild_id")
@@ -626,6 +640,18 @@ class SneakyApi:
         if not tournament or tournament["status"] != "active":
             return web.json_response({"match": None})
         match = await TournamentManager.get_player_active_match(tournament["id"], discord_id=int(discord_id))
+        if match:
+            # Check if the logged-in user is the team captain
+            async with DBContextManager(use_dict=True) as cur:
+                await cur.execute(
+                    "SELECT captain_discord_id FROM tournament_teams WHERE id = %s",
+                    (match["player_team_id"],)
+                )
+                cap_row = await cur.fetchone()
+                match["is_captain"] = bool(
+                    cap_row and cap_row["captain_discord_id"] and
+                    int(cap_row["captain_discord_id"]) == int(discord_id)
+                )
         player_team_id = (
             match["player_team_id"] if match
             else await TournamentManager.get_player_team_id(tournament["id"], discord_id=int(discord_id))
@@ -732,6 +758,19 @@ class SneakyApi:
             return web.json_response({"ok": False, "message": "You don't have an active match right now."})
 
         player_team_id = match["player_team_id"]
+
+        # Only the team captain (or an admin) can report game results
+        is_admin_user = int(discord_id) in global_config.tournament_admin_ids
+        if not is_admin_user:
+            async with DBContextManager(use_dict=True) as cur:
+                await cur.execute(
+                    "SELECT captain_discord_id FROM tournament_teams WHERE id = %s",
+                    (player_team_id,)
+                )
+                cap_row = await cur.fetchone()
+                if not cap_row or not cap_row["captain_discord_id"] or int(cap_row["captain_discord_id"]) != int(discord_id):
+                    return web.json_response({"ok": False, "message": "Only the team captain can report game results."})
+
         winner_team_id = player_team_id if result == "win" else (
             match["team2_id"] if player_team_id == match["team1_id"] else match["team1_id"]
         )

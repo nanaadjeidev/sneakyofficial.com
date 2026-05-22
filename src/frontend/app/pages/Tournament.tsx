@@ -53,6 +53,7 @@ interface MyMatch {
   opposing_team_id: number | null;
   reported_winner_id: number | null;
   is_home_team: boolean;
+  is_captain: boolean;
   room_code: string | null;
   schedule?: { mode_id: string | null; mode_name: string | null; best_of: number } | null;
   games?: { game_number: number; stage_name: string | null }[];
@@ -966,6 +967,7 @@ function MatchReportCard({
   opponentMatchId,
   loading,
   message,
+  isAdmin,
   onReportGame,
   onConfirmGame,
   onDisputeGame,
@@ -975,6 +977,7 @@ function MatchReportCard({
   opponentMatchId?: number | null;
   loading: boolean;
   message: string | null;
+  isAdmin?: boolean;
   onReportGame: (gameNumber: number, result: "win" | "loss") => void;
   onConfirmGame: (gameNumber: number) => void;
   onDisputeGame: (gameNumber: number) => void;
@@ -1089,6 +1092,14 @@ function MatchReportCard({
         </div>
       )}
 
+      {/* Pool name — constant lobby identifier for in-game private battle */}
+      {hasOpponent && (
+        <div className="mb-3 px-4 py-2.5 rounded-lg bg-slate-800/50 border border-slate-700/40">
+          <p className="text-xs text-slate-400 mb-0.5">Your match Pool</p>
+          <p className="text-base font-mono font-bold tracking-widest text-white">sneakyn</p>
+        </div>
+      )}
+
       {/* Room code (home team only) */}
       {hasOpponent && match.is_home_team && match.room_code && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-amber-900/20 border border-amber-600/30">
@@ -1150,28 +1161,32 @@ function MatchReportCard({
         </div>
       )}
 
-      {/* Report game win/loss buttons — no pending game, no counterpick needed, map is set */}
+      {/* Report game win/loss buttons — captain only (or admin) */}
       {match.status !== "awaiting_confirmation"
         && !pendingGame
         && !match.needs_counterpick
         && !match.opponent_needs_counterpick
         && hasOpponent && (
-        <div className="flex gap-2">
-          <button
-            onClick={() => setReportDialog({ gameNumber: currentGame, result: "win" })}
-            disabled={loading}
-            className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-          >
-            We Won Game {currentGame}
-          </button>
-          <button
-            onClick={() => setReportDialog({ gameNumber: currentGame, result: "loss" })}
-            disabled={loading}
-            className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50"
-          >
-            We Lost
-          </button>
-        </div>
+        (match.is_captain || isAdmin) ? (
+          <div className="flex gap-2">
+            <button
+              onClick={() => setReportDialog({ gameNumber: currentGame, result: "win" })}
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-green-600/80 hover:bg-green-600 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              We Won Game {currentGame}
+            </button>
+            <button
+              onClick={() => setReportDialog({ gameNumber: currentGame, result: "loss" })}
+              disabled={loading}
+              className="flex-1 py-2 rounded-lg bg-red-600/50 hover:bg-red-600/70 text-white text-sm font-semibold transition-colors disabled:opacity-50"
+            >
+              We Lost
+            </button>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-500 text-center py-1">Only the team captain can report game results.</p>
+        )
       )}
 
       {message && (
@@ -1709,6 +1724,7 @@ export default function Tournament() {
             opponentMatchId={opponentMatchId}
             loading={reportLoading}
             message={reportMsg}
+            isAdmin={!!isAdmin}
             onReportGame={handleReportGame}
             onConfirmGame={handleConfirmGame}
             onDisputeGame={handleDisputeGame}

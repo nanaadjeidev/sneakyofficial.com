@@ -1254,6 +1254,65 @@ class TournamentManager:
         return True, "⚠️ Game result disputed. Re-report the result when resolved."
 
     @staticmethod
+    async def admin_set_game_result(
+        match_id: int,
+        game_number: int,
+        winner_team_id: int,
+    ) -> tuple[bool, str]:
+        """Admin force-sets a confirmed result for a specific game, overwriting any existing record."""
+        async with DBContextManager() as cur:
+            await _ensure_match_games_table(cur)
+
+            await cur.execute(
+                "SELECT tournament_id, team1_id, team2_id FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return False, "Match not found."
+            tournament_id, team1_id, team2_id = row
+
+            if winner_team_id not in (team1_id, team2_id):
+                return False, "Winner must be one of the two teams in this match."
+
+            # Upsert as confirmed, overwriting pending/disputed/confirmed
+            await cur.execute(
+                """INSERT INTO tournament_match_games (match_id, game_number, winner_team_id, status)
+                   VALUES (%s, %s, %s, 'confirmed')
+                   ON DUPLICATE KEY UPDATE winner_team_id = VALUES(winner_team_id), status = 'confirmed'""",
+                (match_id, game_number, winner_team_id)
+            )
+
+            # Clear awaiting_confirmation match status so next game can be reported
+            await cur.execute(
+                "UPDATE tournament_matches SET status = 'pending' WHERE id = %s AND status = 'awaiting_confirmation'",
+                (match_id,)
+            )
+
+            # Recount confirmed wins
+            await cur.execute(
+                "SELECT winner_team_id FROM tournament_match_games WHERE match_id = %s AND status = 'confirmed'",
+                (match_id,)
+            )
+            results = await cur.fetchall()
+            t1_wins = sum(1 for r in results if r[0] == team1_id)
+            t2_wins = sum(1 for r in results if r[0] == team2_id)
+
+        # Sync in-memory overlay scores
+        TournamentManager.set_game_score(match_id, t1_wins, t2_wins)
+        game_results = TournamentManager.get_game_results(match_id)
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "game_score",
+            "match_id": match_id,
+            "team1_games": t1_wins,
+            "team2_games": t2_wins,
+            "game_results": game_results,
+        })
+        return True, f"Game {game_number} result set (admin override)."
+
+    @staticmethod
     async def player_set_counterpick(
         match_id: int,
         game_number: int,
