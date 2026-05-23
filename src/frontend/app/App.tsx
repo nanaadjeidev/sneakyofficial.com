@@ -20,6 +20,7 @@ import OverlaySignups from "./pages/overlay/OverlaySignups";
 import OverlayRibbon from "./pages/overlay/OverlayRibbon";
 import OverlayRibbonMobile from "./pages/overlay/OverlayRibbonMobile";
 import OverlayHowToPlay from "./pages/overlay/OverlayHowToPlay";
+import OverlayIndex from "./pages/overlay/OverlayIndex";
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
       <Route path="/tournament/admin" element={<ErrorBoundary><TournamentAdmin /></ErrorBoundary>} />
       <Route path="/leaderboard" element={<Leaderboard />} />
       <Route path="/players" element={<Players />} />
+      <Route path="/overlay" element={<OverlayIndex />} />
       <Route path="/overlay/match" element={<OverlayMatch />} />
       <Route path="/overlay/bracket" element={<OverlayBracket />} />
       <Route path="/overlay/leaderboard" element={<OverlayLeaderboard />} />
