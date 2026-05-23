@@ -80,6 +80,16 @@ async def _ensure_round_games_match_id(cur) -> None:
                 raise
 
 
+async def _ensure_schedule_mode_columns(cur) -> None:
+    """Add mode_id / mode_name to tournament_round_schedule if missing."""
+    for col, definition in [("mode_id", "VARCHAR(30)"), ("mode_name", "VARCHAR(50)")]:
+        try:
+            await cur.execute(f"ALTER TABLE tournament_round_schedule ADD COLUMN {col} {definition}")
+        except Exception as e:
+            if "Duplicate column name" not in str(e):
+                raise
+
+
 async def _ensure_map_pools_table(cur) -> None:
     """Create tournament_map_pools for per-mode stage restrictions."""
     await cur.execute("""
@@ -236,6 +246,7 @@ class TournamentManager:
             if not match or not match["team1_id"] or not match["team2_id"]:
                 return None
 
+            await _ensure_schedule_mode_columns(cur)
             await cur.execute(
                 "SELECT stage_name, mode_id, mode_name, best_of FROM tournament_round_schedule "
                 "WHERE tournament_id = %s AND round = %s",
@@ -1881,6 +1892,7 @@ class TournamentManager:
     async def get_bracket_data(tournament_id: int) -> dict:
         """Return full bracket data for the API / frontend."""
         async with DBContextManager(use_dict=True) as cur:
+            await _ensure_schedule_mode_columns(cur)
             await cur.execute(
                 "SELECT id, name, status, team_size, special_rules, affects_rating, created_at FROM tournaments WHERE id = %s",
                 (tournament_id,)

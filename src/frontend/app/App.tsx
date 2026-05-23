@@ -18,6 +18,8 @@ import OverlayLeaderboard from "./pages/overlay/OverlayLeaderboard";
 import OverlayUpNext from "./pages/overlay/OverlayUpNext";
 import OverlaySignups from "./pages/overlay/OverlaySignups";
 import OverlayRibbon from "./pages/overlay/OverlayRibbon";
+import OverlayRibbonMobile from "./pages/overlay/OverlayRibbonMobile";
+import OverlayHowToPlay from "./pages/overlay/OverlayHowToPlay";
 
 function App() {
   return (
@@ -41,6 +43,8 @@ function App() {
       <Route path="/overlay/upnext" element={<OverlayUpNext />} />
       <Route path="/overlay/signups" element={<OverlaySignups />} />
       <Route path="/overlay/ribbon" element={<OverlayRibbon />} />
+      <Route path="/overlay/ribbon-mobile" element={<OverlayRibbonMobile />} />
+      <Route path="/overlay/howtoplay" element={<OverlayHowToPlay />} />
     </Routes>
   );
 }
