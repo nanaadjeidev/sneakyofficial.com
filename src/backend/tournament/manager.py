@@ -438,6 +438,7 @@ class TournamentManager:
                 if not profile or not profile[0]:
                     return False, "You need a Splatoon tag first — type !splattag YourName#1234 then !in again."
                 if not profile[1]:
+                    from backend.util.config import global_config
                     return False, f"Almost there! Join our Discord ({global_config.discord_invite}) then do /profile link twitch:{twitch_username} — then !in again."
                 await cur.execute(
                     "UPDATE player_profiles SET twitch_native = TRUE WHERE LOWER(twitch_username) = LOWER(%s)",
