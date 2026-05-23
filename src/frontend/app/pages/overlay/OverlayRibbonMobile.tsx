@@ -40,41 +40,11 @@ function getRoundLabel(round: number, total: number): string {
 // ── Idle slides ────────────────────────────────────────────────────────────────
 
 const IDLE_SLIDES = [
-  {
-    eyebrow: "sneakyonnightmode",
-    headline: "twitch.tv/sneakyonnightmode",
-    sub: null as string | null,
-    accent: "rgba(145,70,255,0.85)",
-    icon: "🎮",
-  },
-  {
-    eyebrow: "WATCHING ON TWITCH? (1/2)",
-    headline: "!splattag YourName#1234",
-    sub: "then join Discord & do /profile link twitch:yourname",
-    accent: "rgba(145,70,255,0.85)",
-    icon: "🟣",
-  },
-  {
-    eyebrow: "WATCHING ON TWITCH? (2/2)",
-    headline: "!in  — you're entered!",
-    sub: "sneakyofficial.com/tournament  to confirm results",
-    accent: "rgba(145,70,255,0.85)",
-    icon: "✅",
-  },
-  {
-    eyebrow: "YOUTUBE / TIKTOK?",
-    headline: DISCORD,
-    sub: "/tournament signup  in Discord to enter",
-    accent: "rgba(88,101,242,0.90)",
-    icon: "💬",
-  },
-  {
-    eyebrow: "HOW IT WORKS",
-    headline: "Sign up solo · Play 4v4 · Win!",
-    sub: "Auto-matched into teams  ·  climb the leaderboard",
-    accent: "rgba(52,211,153,0.75)",
-    icon: "🏆",
-  },
+  { icon: "🎮", eyebrow: "sneakyonnightmode",        headline: "twitch.tv/sneakyonnightmode",          sub: null as string | null, accent: "rgba(145,70,255,0.85)" },
+  { icon: "🟣", eyebrow: "WATCHING ON TWITCH? (1/2)", headline: "!splattag YourName#1234",              sub: "then join Discord & do /profile link twitch:yourname", accent: "rgba(145,70,255,0.85)" },
+  { icon: "✅", eyebrow: "WATCHING ON TWITCH? (2/2)", headline: "!in  — you're entered!",               sub: "sneakyofficial.com/tournament  to confirm results", accent: "rgba(145,70,255,0.85)" },
+  { icon: "💬", eyebrow: "YOUTUBE / TIKTOK?",         headline: DISCORD,                                sub: "/tournament signup  in Discord to enter", accent: "rgba(88,101,242,0.90)" },
+  { icon: "🏆", eyebrow: "HOW IT WORKS",              headline: "Sign up solo · Play 4v4 · Win!",       sub: "Auto-matched into teams  ·  climb the leaderboard", accent: "rgba(52,211,153,0.75)" },
 ];
 
 const SLIDE_MS = 4800;
@@ -83,7 +53,6 @@ const FADE_MS  = 360;
 function useIdleSlide() {
   const [idx,     setIdx]     = useState(0);
   const [visible, setVisible] = useState(true);
-
   useEffect(() => {
     const t = setInterval(() => {
       setVisible(false);
@@ -91,7 +60,6 @@ function useIdleSlide() {
     }, SLIDE_MS);
     return () => clearInterval(t);
   }, []);
-
   return { slide: IDLE_SLIDES[idx], visible, total: IDLE_SLIDES.length, idx };
 }
 
@@ -108,6 +76,11 @@ function useMobileKeyframes() {
         from { opacity: 0; transform: translateY(100%); }
         to   { opacity: 1; transform: translateY(0); }
       }
+      @keyframes mobScorePop {
+        0%   { transform: scale(1); }
+        40%  { transform: scale(1.18); }
+        100% { transform: scale(1); }
+      }
       @keyframes mobAccentCycle {
         0%   { background-position: 0% center; }
         100% { background-position: 200% center; }
@@ -116,13 +89,9 @@ function useMobileKeyframes() {
         0%, 100% { box-shadow: 0 0 12px rgba(145,70,255,0.6), 0 0 32px rgba(145,70,255,0.3); }
         50%      { box-shadow: 0 0 24px rgba(145,70,255,1), 0 0 60px rgba(145,70,255,0.5); }
       }
-      @keyframes mobMapBg {
-        from { opacity: 0; }
-        to   { opacity: 0.22; }
-      }
       .mob-ribbon-in  { animation: mobRibbonIn 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+      .mob-score-pop  { animation: mobScorePop 0.4s cubic-bezier(0.22,1,0.36,1) both; }
       .mob-icon-glow  { animation: mobIconGlow 2.8s ease-in-out infinite; }
-      .mob-map-bg     { animation: mobMapBg 0.8s ease both; }
       .mob-accent-cycle {
         background: linear-gradient(90deg, rgba(59,130,246,0.8), rgba(145,70,255,0.8), rgba(99,179,255,0.8), rgba(145,70,255,0.8), rgba(59,130,246,0.8));
         background-size: 200% auto;
@@ -136,8 +105,10 @@ function useMobileKeyframes() {
 // ── Data hook ─────────────────────────────────────────────────────────────────
 
 function useMatchData() {
-  const [match,    setMatch]    = useState<OverlayMatchData | null>(null);
-  const [stageKey, setStageKey] = useState(0);
+  const [match,      setMatch]      = useState<OverlayMatchData | null>(null);
+  const [scoreFlash, setScoreFlash] = useState(false);
+  const [stageKey,   setStageKey]   = useState(0);
+  const scoreRef = { current: [0, 0] as [number, number] };
 
   const fetchMatch = useCallback(async () => {
     try {
@@ -147,6 +118,16 @@ function useMatchData() {
   }, []);
 
   useEffect(() => { fetchMatch(); }, [fetchMatch]);
+
+  useEffect(() => {
+    if (!match) return;
+    const cur: [number, number] = [match.team1_games, match.team2_games];
+    if (cur[0] !== scoreRef.current[0] || cur[1] !== scoreRef.current[1]) {
+      scoreRef.current = cur;
+      setScoreFlash(true);
+      setTimeout(() => setScoreFlash(false), 500);
+    }
+  }, [match?.team1_games, match?.team2_games]);
 
   useEffect(() => {
     if (!GUILD_ID) return;
@@ -181,7 +162,7 @@ function useMatchData() {
     return () => { dead = true; ws?.close(); };
   }, [fetchMatch]);
 
-  return { match, stageKey };
+  return { match, scoreFlash, stageKey };
 }
 
 // ── Root export ───────────────────────────────────────────────────────────────
@@ -195,10 +176,10 @@ export default function OverlayRibbonMobile() {
     return () => document.body.classList.remove("overlay-mode");
   }, []);
 
-  const { match, stageKey } = useMatchData();
+  const { match, scoreFlash, stageKey } = useMatchData();
   const { slide, visible, total, idx } = useIdleSlide();
 
-  // ── Idle ────────────────────────────────────────────────────────────────────
+  // ── Idle ──────────────────────────────────────────────────────────────────
   if (!match) {
     return (
       <div
@@ -206,8 +187,7 @@ export default function OverlayRibbonMobile() {
         className="mob-ribbon-in"
         style={{
           width: "100%", height: "100%",
-          display: "flex", flexDirection: "column",
-          justifyContent: "center",
+          display: "flex", flexDirection: "column", justifyContent: "center",
           padding: "clamp(10px,2vh,18px) clamp(14px,4vw,28px)",
           boxSizing: "border-box",
           background: "rgba(6,6,18,0.95)",
@@ -220,24 +200,15 @@ export default function OverlayRibbonMobile() {
       >
         <div className="mob-accent-cycle" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, pointerEvents: "none" }} />
 
-        {/* Avatar + slide */}
         <div style={{ display: "flex", alignItems: "center", gap: "clamp(10px,3vw,20px)" }}>
           <div className="mob-icon-glow" style={{ width: "clamp(36px,10vw,56px)", height: "clamp(36px,10vw,56px)", borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(145,70,255,0.8)", flexShrink: 0 }}>
             <img src="/android-chrome-512x512.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
           </div>
 
-          <div style={{
-            flex: 1, minWidth: 0,
-            opacity: visible ? 1 : 0,
-            transform: visible ? "translateY(0)" : "translateY(4px)",
-            transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`,
-            display: "flex", flexDirection: "column", gap: "clamp(2px,0.5vh,5px)",
-          }}>
+          <div style={{ flex: 1, minWidth: 0, opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(4px)", transition: `opacity ${FADE_MS}ms ease, transform ${FADE_MS}ms ease`, display: "flex", flexDirection: "column", gap: "clamp(2px,0.5vh,5px)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.7vw" }}>
               <span style={{ fontSize: "clamp(10px,1.4vh,15px)", lineHeight: 1 }}>{slide.icon}</span>
-              <span style={{ fontSize: "clamp(8px,1.1vh,12px)", fontWeight: 800, letterSpacing: "0.20em", textTransform: "uppercase", color: slide.accent, lineHeight: 1 }}>
-                {slide.eyebrow}
-              </span>
+              <span style={{ fontSize: "clamp(8px,1.1vh,12px)", fontWeight: 800, letterSpacing: "0.20em", textTransform: "uppercase", color: slide.accent, lineHeight: 1 }}>{slide.eyebrow}</span>
             </div>
             <span style={{ fontSize: "clamp(14px,3vh,26px)", fontWeight: 900, color: "#fff", lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "'Courier New', Courier, monospace" }}>
               {slide.headline}
@@ -250,7 +221,6 @@ export default function OverlayRibbonMobile() {
           </div>
         </div>
 
-        {/* Progress dots */}
         <div style={{ display: "flex", gap: "clamp(4px,1vw,8px)", alignSelf: "flex-end" }}>
           {Array.from({ length: total }, (_, i) => (
             <div key={i} style={{ width: i === idx ? "clamp(14px,3vw,20px)" : "clamp(5px,1vw,7px)", height: "clamp(5px,1vw,7px)", borderRadius: 9999, background: i === idx ? slide.accent : "rgba(255,255,255,0.18)", transition: "width 0.3s ease, background 0.3s ease" }} />
@@ -260,15 +230,23 @@ export default function OverlayRibbonMobile() {
     );
   }
 
-  // ── Active match — map pick only ────────────────────────────────────────────
+  // ── Active match ──────────────────────────────────────────────────────────
+  const bestOf      = match.best_of ?? 1;
+  const winsNeeded  = Math.ceil(bestOf / 2);
   const currentGame = match.team1_games + match.team2_games + 1;
-  const curGameMap  = match.games.find(g => g.game_number === currentGame);
-  const stageName   = match.stage_name ?? curGameMap?.stage_name ?? null;
-  const stageData   = stageName ? STAGES.find(s => s.name === stageName) : null;
-  const modeData    = match.mode_name ? MODES.find(m => m.name === match.mode_name) : null;
   const roundLabel  = getRoundLabel(match.round, match.total_rounds);
   const isComplete  = match.status === "complete";
+  const isT1Winner  = isComplete && match.team1_games > match.team2_games;
+  const isT2Winner  = isComplete && match.team2_games > match.team1_games;
   const isLive      = !isComplete && match.status !== "awaiting_confirmation";
+
+  const curGameMap = match.games.find(g => g.game_number === currentGame);
+  const stageName  = match.stage_name ?? curGameMap?.stage_name ?? null;
+  const stageData  = stageName ? STAGES.find(s => s.name === stageName) : null;
+  const modeData   = match.mode_name ? MODES.find(m => m.name === match.mode_name) : null;
+
+  const pipsT1 = bestOf > 1 ? Array.from({ length: winsNeeded }, (_, i) => i < match.team1_games) : [];
+  const pipsT2 = bestOf > 1 ? Array.from({ length: winsNeeded }, (_, i) => i < match.team2_games) : [];
 
   return (
     <div
@@ -277,69 +255,98 @@ export default function OverlayRibbonMobile() {
       style={{
         width: "100%", height: "100%",
         display: "flex", flexDirection: "column",
-        justifyContent: "center", alignItems: "center",
-        background: "rgba(6,6,18,0.90)",
+        background: "rgba(6,6,18,0.95)",
         backdropFilter: "blur(24px) saturate(160%)",
         WebkitBackdropFilter: "blur(24px) saturate(160%)",
         borderTop: isLive ? "3px solid rgba(239,68,68,0.55)" : isComplete ? "3px solid rgba(52,211,153,0.45)" : "3px solid rgba(255,255,255,0.10)",
         position: "relative", overflow: "hidden",
-        gap: "clamp(3px,0.7vh,7px)",
-        padding: "clamp(8px,1.5vh,14px) clamp(14px,4vw,28px)",
         boxSizing: "border-box",
       }}
     >
-      {/* Stage art */}
-      {stageData && (
-        <img
-          key={`mob-bg-${stageKey}`}
-          src={stageData.image}
-          alt=""
-          className="mob-map-bg"
-          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
-        />
-      )}
-
       {/* Status row */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "2vw", zIndex: 1 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "2vw", paddingTop: "1.2vh", paddingBottom: "0.4vh", flexShrink: 0 }}>
         {isLive && (
-          <div style={{ position: "relative", width: "clamp(6px,1.6vw,9px)", height: "clamp(6px,1.6vw,9px)", flexShrink: 0 }}>
+          <div style={{ position: "relative", width: "clamp(7px,2vw,10px)", height: "clamp(7px,2vw,10px)", flexShrink: 0 }}>
             <div className="absolute inset-0 rounded-full bg-red-500 animate-ping opacity-60" />
             <div className="absolute inset-0 rounded-full bg-red-500" />
           </div>
         )}
-        <span style={{ fontSize: "clamp(8px,2vw,12px)", fontWeight: 900, letterSpacing: "0.26em", textTransform: "uppercase", color: isLive ? "rgba(239,68,68,0.95)" : isComplete ? "rgba(52,211,153,0.80)" : "rgba(255,255,255,0.30)" }}>
+        <span style={{ fontSize: "clamp(9px,2.8vw,15px)", fontWeight: 900, letterSpacing: "0.25em", textTransform: "uppercase", color: isLive ? "rgba(239,68,68,0.95)" : isComplete ? "rgba(52,211,153,0.80)" : "rgba(255,255,255,0.35)" }}>
           {isLive ? "LIVE" : isComplete ? "DONE" : "CONF"}
         </span>
-        <span style={{ fontSize: "clamp(7px,1.8vw,11px)", fontWeight: 700, letterSpacing: "0.16em", color: "rgba(255,255,255,0.28)", textTransform: "uppercase" }}>
-          {roundLabel}  ·  G{currentGame}{match.best_of > 1 ? `/${match.best_of}` : ""}
+        <span style={{ fontSize: "clamp(8px,2.4vw,13px)", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.28)" }}>
+          {roundLabel}{bestOf > 1 ? ` · BO${bestOf}` : ""}
+        </span>
+        <span style={{ fontSize: "clamp(8px,2.2vw,12px)", fontWeight: 600, color: "rgba(145,70,255,0.7)", letterSpacing: "0.05em" }}>
+          {match.tournament_name}
         </span>
       </div>
 
-      {/* Stage name */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "2vw", zIndex: 1 }}>
-        {modeData && (
-          <img src={modeData.icon} alt={modeData.name} style={{ width: "clamp(18px,5vw,30px)", height: "clamp(18px,5vw,30px)", objectFit: "contain", opacity: 0.85, filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.8))", flexShrink: 0 }} />
-        )}
-        <span style={{
-          fontSize: "clamp(20px,6.5vw,42px)",
-          fontWeight: 900,
-          letterSpacing: "0.03em",
-          color: "#fff",
-          textShadow: "0 2px 12px rgba(0,0,0,0.95)",
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-        }}>
-          {stageName ?? (isLive ? "Counterpick pending…" : "—")}
-        </span>
-      </div>
+      {/* Score row + map pick on right */}
+      <div style={{ flex: 1, display: "flex", alignItems: "center", padding: "0 3vw", gap: "2vw", minHeight: 0 }}>
 
-      {/* Mode name */}
-      {modeData && (
-        <span style={{ fontSize: "clamp(8px,2.2vw,13px)", fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: "rgba(255,255,255,0.40)", zIndex: 1 }}>
-          {modeData.name}
-        </span>
-      )}
+        {/* Team 1 */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "0.4vh" }}>
+          <span style={{ fontSize: "clamp(13px,4.5vw,28px)", fontWeight: 900, lineHeight: 1, color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)", textShadow: isT1Winner ? "0 0 24px rgba(52,211,153,0.6)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textAlign: "right" }}>
+            {match.team1.name}
+          </span>
+          {bestOf > 1 && (
+            <div style={{ display: "flex", gap: "1.2vw", flexDirection: "row-reverse" }}>
+              {pipsT1.map((f, i) => (
+                <div key={i} style={{ width: "clamp(6px,1.8vw,10px)", height: "clamp(6px,1.8vw,10px)", borderRadius: "9999px", background: f ? (isT1Winner ? "rgb(52,211,153)" : "rgb(248,113,113)") : "transparent", border: f ? (isT1Winner ? "1.5px solid rgba(52,211,153,0.9)" : "1.5px solid rgba(248,113,113,0.7)") : "1.5px solid rgba(255,255,255,0.18)", boxShadow: f && isT1Winner ? "0 0 6px rgba(52,211,153,0.9)" : "none" }} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Score */}
+        <div className={scoreFlash ? "mob-score-pop" : undefined} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: "1.5vw" }}>
+          <span style={{ fontSize: "clamp(24px,7.5vw,48px)", fontWeight: 900, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)" }}>{match.team1_games}</span>
+          <span style={{ fontSize: "clamp(12px,3vw,20px)", fontWeight: 100, color: "rgba(255,255,255,0.22)" }}>—</span>
+          <span style={{ fontSize: "clamp(24px,7.5vw,48px)", fontWeight: 900, fontVariantNumeric: "tabular-nums", lineHeight: 1, color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)" }}>{match.team2_games}</span>
+        </div>
+
+        {/* Team 2 */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "0.4vh" }}>
+          <span style={{ fontSize: "clamp(13px,4.5vw,28px)", fontWeight: 900, lineHeight: 1, color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)", textShadow: isT2Winner ? "0 0 24px rgba(52,211,153,0.6)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
+            {match.team2.name}
+          </span>
+          {bestOf > 1 && (
+            <div style={{ display: "flex", gap: "1.2vw" }}>
+              {pipsT2.map((f, i) => (
+                <div key={i} style={{ width: "clamp(6px,1.8vw,10px)", height: "clamp(6px,1.8vw,10px)", borderRadius: "9999px", background: f ? (isT2Winner ? "rgb(52,211,153)" : "rgb(248,113,113)") : "transparent", border: f ? (isT2Winner ? "1.5px solid rgba(52,211,153,0.9)" : "1.5px solid rgba(248,113,113,0.7)") : "1.5px solid rgba(255,255,255,0.18)", boxShadow: f && isT2Winner ? "0 0 6px rgba(52,211,153,0.9)" : "none" }} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ width: 1, alignSelf: "stretch", margin: "1vh 0", background: "rgba(255,255,255,0.09)", flexShrink: 0 }} />
+
+        {/* Map pick */}
+        <div style={{ flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5vh", width: "clamp(60px,18vw,110px)" }}>
+          <div style={{ position: "relative", width: "100%", height: "clamp(28px,5.5vh,44px)", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)" }}>
+            {stageData ? (
+              <img key={`mob-map-${stageKey}`} src={stageData.image} alt={stageName ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <div style={{ width: "100%", height: "100%", background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: "clamp(10px,2vw,14px)", color: "rgba(255,255,255,0.20)" }}>?</span>
+              </div>
+            )}
+            {modeData && (
+              <div style={{ position: "absolute", bottom: 2, right: 3 }}>
+                <img src={modeData.icon} alt={modeData.name} style={{ width: "clamp(10px,2.5vw,16px)", height: "clamp(10px,2.5vw,16px)", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }} />
+              </div>
+            )}
+          </div>
+          <span style={{ fontSize: "clamp(8px,2vw,11px)", fontWeight: 700, color: stageName ? "rgba(255,255,255,0.80)" : "rgba(255,255,255,0.28)", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", lineHeight: 1 }}>
+            {stageName ?? "Counterpick…"}
+          </span>
+          <span style={{ fontSize: "clamp(7px,1.6vw,9px)", fontWeight: 600, color: "rgba(255,255,255,0.28)", letterSpacing: "0.12em" }}>
+            G{currentGame}{bestOf > 1 ? `/${bestOf}` : ""}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
