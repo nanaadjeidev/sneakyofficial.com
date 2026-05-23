@@ -1893,6 +1893,7 @@ class TournamentManager:
         """Return full bracket data for the API / frontend."""
         async with DBContextManager(use_dict=True) as cur:
             await _ensure_schedule_mode_columns(cur)
+            await _ensure_round_games_match_id(cur)
             await cur.execute(
                 "SELECT id, name, status, team_size, special_rules, affects_rating, created_at FROM tournaments WHERE id = %s",
                 (tournament_id,)
