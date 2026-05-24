@@ -4,7 +4,7 @@
 
 # sneakyofficial.com
 
-The source code for [**sneakyofficial.com**](https://sneakyofficial.com) — a personal portfolio, Splatoon weapon scraper, and full-stack showcase all rolled into one. Built by **Nana Adjei** (that's me, hi), this repo features a sleek React frontend, an async Python backend, and some delicious scraping sauce on the side.
+The source code for [**sneakyofficial.com**](https://sneakyofficial.com) A personal portfolio, Splatoon weapon scraper, and full-stack showcase all rolled into one. Built by **Nana Adjei** (that's me, hi), this repo features a sleek React frontend, an async Python backend, and some delicious scraping sauce on the side.
 
 ---
 
