@@ -7,6 +7,7 @@ from .splatdle import Splatdle
 from .oauth import DiscordOauthHandler
 from ..util.database_context_manager import DBContextManager
 from ..util.broadcaster import TournamentBroadcaster
+from ..util import overlay_settings as _ov
 from ..tournament import TournamentManager
 from ..util.config import global_config
 import interactions
@@ -64,6 +65,8 @@ def verify_access_token(func: Callable) -> Callable:
 
         return await func(self, request, discord_info.get("id"), *args, **kwargs)
     return wrapper
+
+
 
 
 class SneakyApi:
@@ -292,6 +295,52 @@ class SneakyApi:
         except Exception:
             logger.exception("tournament_admin_save_teams failed for tournament_id=%s", tournament_id)
             return web.json_response({"ok": False, "message": "Server error while saving teams — check logs."}, status=500)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_add_signup(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            display_name = str(body["display_name"]).strip()
+            discord_id = int(body["discord_id"]) if body.get("discord_id") else None
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            ok, msg = await TournamentManager.admin_add_signup(tournament_id, display_name, discord_id)
+        except Exception:
+            logger.exception("tournament_admin_add_signup failed")
+            return web.json_response({"error": "Server error"}, status=500)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_remove_signups(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            signup_ids = [int(x) for x in body["signup_ids"]]
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            ok, msg = await TournamentManager.admin_remove_signups(tournament_id, signup_ids)
+        except Exception:
+            logger.exception("tournament_admin_remove_signups failed")
+            return web.json_response({"error": "Server error"}, status=500)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_update_team_size(self, request: Request, admin_id: int) -> web.Response:
+        try:
+            body = await request.json()
+            tournament_id = int(body["tournament_id"])
+            team_size = int(body["team_size"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            ok, msg = await TournamentManager.update_team_size(tournament_id, team_size)
+        except Exception:
+            logger.exception("tournament_admin_update_team_size failed")
+            return web.json_response({"error": "Server error"}, status=500)
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin
@@ -543,6 +592,33 @@ class SneakyApi:
         })
         return web.json_response({"ok": True})
 
+    async def serve_overlay_settings(self, request: Request) -> web.Response:
+        """Return current overlay/ribbon settings (public — used by the stream overlay)."""
+        return web.json_response(_ov.get())
+
+    @verify_tournament_admin
+    async def tournament_admin_set_overlay_settings(self, request: Request, admin_id: int) -> web.Response:
+        """Update overlay/ribbon settings and broadcast the change to all connected overlays."""
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        ribbon_mode = body.get("ribbon_mode", "active")
+        if ribbon_mode not in ("idle", "active", "open_lobby"):
+            return web.json_response({"error": "Invalid ribbon_mode"}, status=400)
+
+        _ov.update({
+            "ribbon_mode": ribbon_mode,
+            "open_lobby_stage": body.get("open_lobby_stage") or None,
+            "open_lobby_mode_id": body.get("open_lobby_mode_id") or None,
+            "open_lobby_mode_name": body.get("open_lobby_mode_name") or None,
+            "open_lobby_room_code": body.get("open_lobby_room_code") or None,
+            "weapon_pool_channel": body.get("weapon_pool_channel") or "sneakyn",
+        })
+        await TournamentBroadcaster.get().broadcast({"event": "overlay_settings", **_ov.get()})
+        return web.json_response({"ok": True})
+
     async def serve_overlay_data(self, request: Request) -> web.Response:
         """Return pinned match overlay data for the stream overlay."""
         guild_id_param = request.rel_url.query.get("guild_id")
@@ -650,6 +726,89 @@ class SneakyApi:
         except Exception:
             logger.exception("tournament_admin_set_map_pool failed")
             return web.json_response({"ok": False, "message": "Failed to save map pool."})
+
+    @verify_tournament_admin
+    async def tournament_admin_list_presets(self, request: Request, admin_id: int) -> web.Response:
+        """List all saved map pool presets."""
+        try:
+            presets = await TournamentManager.get_map_pool_presets()
+            return web.json_response({"presets": presets})
+        except Exception:
+            logger.exception("tournament_admin_list_presets failed")
+            return web.json_response({"error": "Server error"}, status=500)
+
+    @verify_tournament_admin
+    async def tournament_admin_save_preset(self, request: Request, admin_id: int) -> web.Response:
+        """Create or update a map pool preset."""
+        try:
+            body = await request.json()
+            name = str(body["name"]).strip()
+            pool = body["pool"]
+            preset_id = body.get("id") or None
+            if not name or not isinstance(pool, dict):
+                raise ValueError()
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            new_id = await TournamentManager.upsert_map_pool_preset(
+                int(preset_id) if preset_id else None, name, pool
+            )
+            return web.json_response({"ok": True, "id": new_id, "message": "Preset saved."})
+        except Exception:
+            logger.exception("tournament_admin_save_preset failed")
+            return web.json_response({"ok": False, "message": "Failed to save preset."})
+
+    @verify_tournament_admin
+    async def tournament_admin_delete_preset(self, request: Request, admin_id: int) -> web.Response:
+        """Delete a map pool preset by id."""
+        try:
+            body = await request.json()
+            preset_id = int(body["id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            await TournamentManager.delete_map_pool_preset(preset_id)
+            return web.json_response({"ok": True, "message": "Preset deleted."})
+        except Exception:
+            logger.exception("tournament_admin_delete_preset failed")
+            return web.json_response({"ok": False, "message": "Failed to delete preset."})
+
+    @verify_tournament_admin
+    async def tournament_admin_apply_preset(self, request: Request, admin_id: int) -> web.Response:
+        """Apply a preset's pool to the current tournament."""
+        try:
+            body = await request.json()
+            preset_id = int(body["preset_id"])
+            tournament_id = int(body["tournament_id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+        try:
+            presets = await TournamentManager.get_map_pool_presets()
+            preset = next((p for p in presets if p["id"] == preset_id), None)
+            if not preset:
+                return web.json_response({"ok": False, "message": "Preset not found."})
+            await TournamentManager.set_map_pool(tournament_id, preset["pool"])
+            return web.json_response({"ok": True, "message": f"Applied \"{preset['name']}\" to tournament."})
+        except Exception:
+            logger.exception("tournament_admin_apply_preset failed")
+            return web.json_response({"ok": False, "message": "Failed to apply preset."})
+
+    async def serve_overlay_map_pool(self, request: Request) -> web.Response:
+        """Public endpoint: return current tournament map pool for the overlay."""
+        guild_id_param = request.rel_url.query.get("guild_id")
+        if not guild_id_param:
+            return web.json_response({"pool": {}})
+        try:
+            tournament = await TournamentManager.get_active_tournament(int(guild_id_param))
+            if not tournament:
+                tournament = await TournamentManager.get_recent_completed_tournament(int(guild_id_param))
+            if not tournament:
+                return web.json_response({"pool": {}})
+            pool = await TournamentManager.get_map_pool(tournament["id"])
+            return web.json_response({"tournament_id": tournament["id"], "name": tournament["name"], "pool": pool})
+        except Exception:
+            logger.exception("serve_overlay_map_pool failed")
+            return web.json_response({"error": "Server error"}, status=500)
 
     async def serve_overlay_upnext(self, request: Request) -> web.Response:
         """Return the next pending (unpinned) match for the 'up next' overlay."""

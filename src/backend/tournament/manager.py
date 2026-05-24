@@ -36,6 +36,22 @@ async def _ensure_is_sub_column(cur) -> None:
             raise
 
 
+async def _ensure_one_team_per_signup(cur) -> None:
+    """Enforce that a signup can only appear in one team at a time.
+
+    Adds a UNIQUE constraint on signup_id in tournament_team_members so the DB
+    rejects any INSERT that would put the same player in two teams, catching
+    bugs before they corrupt tournament state.
+    """
+    try:
+        await cur.execute(
+            "ALTER TABLE tournament_team_members ADD UNIQUE KEY uq_signup_one_team (signup_id)"
+        )
+    except Exception as e:
+        if "Duplicate key name" not in str(e) and "duplicate key" not in str(e).lower():
+            raise
+
+
 async def _ensure_match_games_table(cur) -> None:
     """Create tournament_match_games for per-game results if it doesn't exist."""
     await cur.execute("""
@@ -99,6 +115,18 @@ async def _ensure_map_pools_table(cur) -> None:
           mode_id VARCHAR(50) NOT NULL,
           stage_name VARCHAR(100) NOT NULL,
           UNIQUE KEY uq_pool (tournament_id, mode_id, stage_name)
+        )
+    """)
+
+
+async def _ensure_map_pool_presets_table(cur) -> None:
+    await cur.execute("""
+        CREATE TABLE IF NOT EXISTS map_pool_presets (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(100) NOT NULL,
+          pool JSON NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
         )
     """)
 
@@ -545,6 +573,8 @@ class TournamentManager:
                 return False, "No tournament is open for sign-ups.", []
             tid, tournament_name, team_size = row
 
+            # --- Read-only validation phase (no DB mutations yet) ---
+
             # Collect pre-created teams
             await cur.execute(
                 """SELECT tt.id, tt.team_name, tt.captain_discord_id, tt.captain_signup_id,
@@ -559,22 +589,6 @@ class TournamentManager:
             )
             pre_teams_raw = list(await cur.fetchall())
 
-            used_names: set[str] = set()
-            team_ids: list[int] = []
-            teams_info: list[dict] = []
-            assigned_signup_ids: set[int] = set()
-
-            for row in pre_teams_raw:
-                team_id, tname, cap_discord_id, cap_signup_id, sids_str, mnames_str = row
-                member_names = mnames_str.split("||") if mnames_str else []
-                sids = [int(x) for x in sids_str.split(",") if x]
-                assigned_signup_ids.update(sids)
-                used_names.add(tname)
-                team_ids.append(team_id)
-                teams_info.append({"id": team_id, "name": tname, "members": member_names, "captain_discord_id": cap_discord_id})
-                # Mark as no longer pre-created (now locked)
-                await cur.execute("UPDATE tournament_teams SET is_pre_created = FALSE WHERE id = %s", (team_id,))
-
             # Get unassigned signups for auto-grouping
             await cur.execute(
                 "SELECT id, display_name FROM tournament_signups WHERE tournament_id = %s AND (assigned_team_id IS NULL) ORDER BY RAND()",
@@ -584,6 +598,64 @@ class TournamentManager:
 
             extra_teams = len(unassigned) // team_size
             dropped_count = len(unassigned) - extra_teams * team_size
+            num_teams = len(pre_teams_raw) + extra_teams
+
+            if num_teams < 2:
+                min_players = team_size * 2
+                needed = min_players - (len(pre_teams_raw) * team_size + len(unassigned))
+                await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
+                total_signups = (await cur.fetchone())[0]
+                detail = (
+                    f"Found {len(pre_teams_raw)} saved team(s) and {len(unassigned)} unassigned player(s) "
+                    f"({total_signups} total signups in this tournament)."
+                )
+                return False, f"Need at least {min_players} players (2 full teams of {team_size}). Need {max(0, needed)} more. {detail}", []
+
+            p = _next_power_of_two(num_teams)
+            total_rounds = int(math.log2(p))
+
+            # Validate all rounds have a mode assigned before touching anything
+            await cur.execute(
+                """SELECT DISTINCT round FROM tournament_round_schedule
+                   WHERE tournament_id = %s AND mode_id IS NOT NULL AND round BETWEEN 1 AND %s""",
+                (tid, total_rounds)
+            )
+            scheduled_rounds = {r[0] for r in await cur.fetchall()}
+            missing_rounds = [r for r in range(1, total_rounds + 1) if r not in scheduled_rounds]
+            if missing_rounds:
+                return False, f"Please set a mode for all {total_rounds} rounds before locking. Missing: Round(s) {', '.join(str(r) for r in missing_rounds)}.", []
+
+            # --- Mutation phase (all validations passed) ---
+
+            # Clean up any orphaned teams left by previous failed lock attempts
+            # (is_pre_created=FALSE but no matches exist yet, meaning the lock never
+            # completed). These would otherwise pollute team_members lookups.
+            await cur.execute(
+                """SELECT tt.id FROM tournament_teams tt
+                   LEFT JOIN tournament_matches tm
+                     ON tm.tournament_id = tt.tournament_id
+                        AND (tm.team1_id = tt.id OR tm.team2_id = tt.id)
+                   WHERE tt.tournament_id = %s AND tt.is_pre_created = FALSE AND tm.id IS NULL""",
+                (tid,)
+            )
+            orphan_ids = [r[0] for r in await cur.fetchall()]
+            if orphan_ids:
+                fmt = ",".join(["%s"] * len(orphan_ids))
+                await cur.execute(f"DELETE FROM tournament_team_members WHERE team_id IN ({fmt})", orphan_ids)
+                await cur.execute(f"DELETE FROM tournament_teams WHERE id IN ({fmt})", orphan_ids)
+
+            used_names: set[str] = set()
+            team_ids: list[int] = []
+            teams_info: list[dict] = []
+
+            for row in pre_teams_raw:
+                team_id, tname, cap_discord_id, cap_signup_id, sids_str, mnames_str = row
+                member_names = mnames_str.split("||") if mnames_str else []
+                used_names.add(tname)
+                team_ids.append(team_id)
+                teams_info.append({"id": team_id, "name": tname, "members": member_names, "captain_discord_id": cap_discord_id})
+                # Mark as no longer pre-created (now locked)
+                await cur.execute("UPDATE tournament_teams SET is_pre_created = FALSE WHERE id = %s", (team_id,))
 
             for i in range(extra_teams):
                 members = unassigned[i * team_size:(i + 1) * team_size]
@@ -622,35 +694,10 @@ class TournamentManager:
                     )
                     member_names.append(display_name)
 
-                teams_info.append({"id": team_id, "name": gen_name, "members": member_names, "captain_discord_id": cap_id})
-
-            num_teams = len(team_ids)
-            if num_teams < 2:
-                min_players = team_size * 2
-                needed = min_players - (len(pre_teams_raw) * team_size + len(unassigned))
-                await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tid,))
-                total_signups = (await cur.fetchone())[0]
-                detail = (
-                    f"Found {len(pre_teams_raw)} saved team(s) and {len(unassigned)} unassigned player(s) "
-                    f"({total_signups} total signups in this tournament)."
-                )
-                return False, f"Need at least {min_players} players (2 full teams of {team_size}). Need {max(0, needed)} more. {detail}", []
+                teams_info.append({"id": team_id, "name": gen_name, "members": member_names, "captain_discord_id": cap_discord_id})
 
             # Generate R1 slot pairs
             r1_matches = _build_r1_slots(team_ids)
-            p = _next_power_of_two(num_teams)
-            total_rounds = int(math.log2(p))
-
-            # Validate all rounds have a mode assigned
-            await cur.execute(
-                """SELECT DISTINCT round FROM tournament_round_schedule
-                   WHERE tournament_id = %s AND mode_id IS NOT NULL AND round BETWEEN 1 AND %s""",
-                (tid, total_rounds)
-            )
-            scheduled_rounds = {r[0] for r in await cur.fetchall()}
-            missing_rounds = [r for r in range(1, total_rounds + 1) if r not in scheduled_rounds]
-            if missing_rounds:
-                return False, f"Please set a mode for all {total_rounds} rounds before locking. Missing: Round(s) {', '.join(str(r) for r in missing_rounds)}.", []
 
             # Pre-create all match slots for every round
             match_count = p // 2
@@ -1495,6 +1542,77 @@ class TournamentManager:
         return {"signups": signups, "pre_teams": pre_teams}
 
     @staticmethod
+    async def admin_add_signup(tournament_id: int, display_name: str, discord_id: Optional[int] = None) -> tuple[bool, str]:
+        """Manually add a signup to a tournament (admin only)."""
+        if not display_name:
+            return False, "Display name is required."
+        async with DBContextManager() as cur:
+            await cur.execute("SELECT status FROM tournaments WHERE id = %s", (tournament_id,))
+            row = await cur.fetchone()
+            if not row:
+                return False, "Tournament not found."
+            if row[0] != "signup":
+                return False, "Tournament is not in sign-up phase."
+            if discord_id:
+                await cur.execute(
+                    "SELECT id FROM tournament_signups WHERE tournament_id = %s AND discord_id = %s",
+                    (tournament_id, discord_id)
+                )
+            else:
+                await cur.execute(
+                    "SELECT id FROM tournament_signups WHERE tournament_id = %s AND LOWER(display_name) = LOWER(%s)",
+                    (tournament_id, display_name)
+                )
+            if await cur.fetchone():
+                return False, f"'{display_name}' is already signed up."
+            await cur.execute(
+                "INSERT INTO tournament_signups (tournament_id, discord_id, display_name) VALUES (%s, %s, %s)",
+                (tournament_id, discord_id, display_name)
+            )
+            await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tournament_id,))
+            count = (await cur.fetchone())[0]
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "signup",
+            "tournament_id": tournament_id,
+            "display_name": display_name,
+            "discord_id": str(discord_id) if discord_id else None,
+            "twitch_username": None,
+            "count": count,
+        })
+        return True, f"Added '{display_name}' to sign-ups. ({count} players)"
+
+    @staticmethod
+    async def admin_remove_signups(tournament_id: int, signup_ids: list[int]) -> tuple[bool, str]:
+        """Remove multiple signups by ID (admin only)."""
+        if not signup_ids:
+            return False, "No signups specified."
+        async with DBContextManager() as cur:
+            fmt = ",".join(["%s"] * len(signup_ids))
+            await cur.execute(
+                f"DELETE FROM tournament_signups WHERE tournament_id = %s AND id IN ({fmt})",
+                (tournament_id, *signup_ids)
+            )
+            removed = cur.rowcount
+            await cur.execute("SELECT COUNT(*) FROM tournament_signups WHERE tournament_id = %s", (tournament_id,))
+            count = (await cur.fetchone())[0]
+        return True, f"Removed {removed} player(s). ({count} remaining)"
+
+    @staticmethod
+    async def update_team_size(tournament_id: int, team_size: int) -> tuple[bool, str]:
+        """Change team size for a tournament in sign-up phase."""
+        team_size = max(2, min(4, team_size))
+        async with DBContextManager() as cur:
+            await cur.execute("SELECT status FROM tournaments WHERE id = %s", (tournament_id,))
+            row = await cur.fetchone()
+            if not row:
+                return False, "Tournament not found."
+            if row[0] != "signup":
+                return False, "Team size can only be changed during sign-ups."
+            await cur.execute("UPDATE tournaments SET team_size = %s WHERE id = %s", (team_size, tournament_id))
+        return True, f"Team size updated to {team_size}v{team_size}."
+
+    @staticmethod
     async def get_public_signups(tournament_id: int) -> list[dict]:
         """Return display_name, discord_id, twitch_username for all signups (public view)."""
         async with DBContextManager(use_dict=True) as cur:
@@ -1522,8 +1640,19 @@ class TournamentManager:
                 if not ok:
                     return False, f"Team name \"{provided_name}\": {reason}"
 
+        # Application-level guard: reject duplicate signup IDs across teams in the payload
+        all_incoming_ids: list[int] = [
+            int(sid)
+            for team in teams_data
+            for sid in (team.get("signup_ids", []) + team.get("sub_signup_ids", []))
+            if sid
+        ]
+        if len(all_incoming_ids) != len(set(all_incoming_ids)):
+            return False, "A player appears in more than one team. Each player can only be on one team."
+
         async with DBContextManager() as cur:
             await _ensure_is_sub_column(cur)
+            await _ensure_one_team_per_signup(cur)
 
             await cur.execute(
                 "SELECT status FROM tournaments WHERE id = %s", (tournament_id,)
@@ -1552,9 +1681,10 @@ class TournamentManager:
                         "Please refresh the page and try again."
                     )
 
-            # Clear existing pre-created teams and their assignments
+            # Clear ALL existing teams for this tournament (pre-created and any orphans
+            # left by a failed lock attempt where is_pre_created was already set to FALSE)
             await cur.execute(
-                "SELECT id FROM tournament_teams WHERE tournament_id = %s AND is_pre_created = TRUE",
+                "SELECT id FROM tournament_teams WHERE tournament_id = %s",
                 (tournament_id,)
             )
             old_team_ids = [r[0] for r in await cur.fetchall()]
@@ -1890,6 +2020,48 @@ class TournamentManager:
                         )
 
     @staticmethod
+    async def get_map_pool_presets() -> list:
+        """Return all saved map pool presets ordered by name."""
+        import json
+        async with DBContextManager(use_dict=True) as cur:
+            await _ensure_map_pool_presets_table(cur)
+            await cur.execute("SELECT id, name, pool FROM map_pool_presets ORDER BY name")
+            rows = await cur.fetchall()
+        result = []
+        for row in rows:
+            pool = row["pool"]
+            if isinstance(pool, str):
+                pool = json.loads(pool)
+            result.append({"id": row["id"], "name": row["name"], "pool": pool})
+        return result
+
+    @staticmethod
+    async def upsert_map_pool_preset(preset_id: Optional[int], name: str, pool: dict) -> int:
+        """Create or update a map pool preset. Returns the preset id."""
+        import json
+        pool_json = json.dumps(pool)
+        async with DBContextManager(use_dict=True) as cur:
+            await _ensure_map_pool_presets_table(cur)
+            if preset_id:
+                await cur.execute(
+                    "UPDATE map_pool_presets SET name = %s, pool = %s WHERE id = %s",
+                    (name, pool_json, preset_id)
+                )
+                return preset_id
+            else:
+                await cur.execute(
+                    "INSERT INTO map_pool_presets (name, pool) VALUES (%s, %s)",
+                    (name, pool_json)
+                )
+                return cur.lastrowid
+
+    @staticmethod
+    async def delete_map_pool_preset(preset_id: int) -> None:
+        async with DBContextManager(use_dict=True) as cur:
+            await _ensure_map_pool_presets_table(cur)
+            await cur.execute("DELETE FROM map_pool_presets WHERE id = %s", (preset_id,))
+
+    @staticmethod
     async def get_bracket_data(tournament_id: int) -> dict:
         """Return full bracket data for the API / frontend."""
         async with DBContextManager(use_dict=True) as cur:
@@ -1927,7 +2099,7 @@ class TournamentManager:
             teams = {row["id"]: _team_row(row) for row in teams_raw}
 
             await cur.execute(
-                """SELECT id, round, match_number, team1_id, team2_id, winner_id, status
+                """SELECT id, round, match_number, team1_id, team2_id, winner_id, status, room_code
                    FROM tournament_matches
                    WHERE tournament_id = %s ORDER BY round, match_number""",
                 (tournament_id,)
@@ -1956,6 +2128,7 @@ class TournamentManager:
                     "team2": teams.get(m["team2_id"]) if m["team2_id"] else None,
                     "winner_id": m["winner_id"],
                     "status": m["status"],
+                    "room_code": m["room_code"],
                     "is_bye": m["team2_id"] is None and m["status"] == "complete",
                     "feeder1_match_id": f1["id"] if f1 else None,
                     "feeder2_match_id": f2["id"] if f2 else None,

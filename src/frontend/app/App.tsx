@@ -20,6 +20,7 @@ import OverlaySignups from "./pages/overlay/OverlaySignups";
 import OverlayRibbon from "./pages/overlay/OverlayRibbon";
 import OverlayRibbonMobile from "./pages/overlay/OverlayRibbonMobile";
 import OverlayHowToPlay from "./pages/overlay/OverlayHowToPlay";
+import OverlayMapPool from "./pages/overlay/OverlayMapPool";
 import OverlayIndex from "./pages/overlay/OverlayIndex";
 
 function App() {
@@ -47,6 +48,7 @@ function App() {
       <Route path="/overlay/ribbon" element={<OverlayRibbon />} />
       <Route path="/overlay/ribbon-mobile" element={<OverlayRibbonMobile />} />
       <Route path="/overlay/howtoplay" element={<OverlayHowToPlay />} />
+      <Route path="/overlay/map-pool" element={<OverlayMapPool />} />
     </Routes>
   );
 }

@@ -131,7 +131,9 @@ INDEX idx_tournament (tournament_id)
 CREATE TABLE IF NOT EXISTS tournament_team_members (
 team_id INT NOT NULL,
 signup_id INT NOT NULL,
+is_sub TINYINT(1) NOT NULL DEFAULT 0,
 PRIMARY KEY (team_id, signup_id),
+UNIQUE KEY uq_signup_one_team (signup_id),
 FOREIGN KEY (team_id) REFERENCES tournament_teams(id) ON DELETE CASCADE,
 FOREIGN KEY (signup_id) REFERENCES tournament_signups(id) ON DELETE CASCADE
 );
@@ -270,3 +272,11 @@ CREATE TABLE IF NOT EXISTS tournament_match_games (
   FOREIGN KEY (winner_team_id) REFERENCES tournament_teams(id)
 );
 -- Migration for existing installs: (run the CREATE TABLE above)
+
+CREATE TABLE IF NOT EXISTS map_pool_presets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  pool JSON NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

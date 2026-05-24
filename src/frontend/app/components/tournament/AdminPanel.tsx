@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
-import { Plus, Trash2, Lock, X, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus, RotateCcw } from "lucide-react";
+import { Plus, Trash2, Lock, X, RefreshCw, ChevronDown, ChevronUp, Users, Map as MapIcon, Pencil, Check, Crown, UserPlus, Swords, Pin, PinOff, Minus, RotateCcw, Monitor, UserMinus } from "lucide-react";
 import MapModePicker, { type RoundMapMode } from "./MapModePicker";
 import { STAGES, MODES } from "./splatoonData";
 
@@ -89,6 +89,7 @@ interface AdminMatch {
   status: string;
   team1_games?: number;
   team2_games?: number;
+  room_code?: string | null;
   schedule?: RoundSchedule | null;
 }
 
@@ -517,6 +518,11 @@ export function AdminMatchReporter({ onRefresh, flash }: {
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs text-slate-500">Round {m.round} · Match #{m.id}</span>
                   <div className="flex items-center gap-2">
+                    {m.room_code && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded border border-amber-600/40 bg-amber-900/20 text-amber-300 tracking-widest select-all">
+                        {m.room_code}
+                      </span>
+                    )}
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
                       m.status === "awaiting_confirmation"
                         ? "text-yellow-300 border-yellow-600/40 bg-yellow-900/20"
@@ -726,6 +732,19 @@ export default function AdminPanel({
   const [ending, setEnding] = useState(false);
   const [confirmModal, setConfirmModal] = useState<{ message: string; label: string; danger: boolean; action: () => void } | null>(null);
 
+  // Manage signups section
+  const [manageOpen, setManageOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [addName, setAddName] = useState("");
+  const [addDiscordId, setAddDiscordId] = useState("");
+  const [addingSave, setAddingSave] = useState(false);
+  const [removingSave, setRemovingSave] = useState(false);
+  const [pendingTeamSize, setPendingTeamSize] = useState(teamSize);
+  const [teamSizeSaving, setTeamSizeSaving] = useState(false);
+
+  // Keep pendingTeamSize in sync if parent re-fetches a different team_size
+  useEffect(() => { setPendingTeamSize(teamSize); }, [teamSize]);
+
   const flash = (text: string, ok: boolean) => { setMsg({ text, ok }); setTimeout(() => setMsg(null), 4000); };
 
   // Ref so drag callbacks can read current teams without stale closure values
@@ -902,6 +921,73 @@ export default function AdminPanel({
     setIsDirty(true);
     setTeams(created);
     setUnassigned(leftover);
+  };
+
+  // ---- Manage signups ----------------------------------------------------
+
+  const toggleSelectId = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllSignups = () => setSelectedIds(new Set(signups.map((s) => s.id)));
+  const deselectAllSignups = () => setSelectedIds(new Set());
+
+  const addSignup = async () => {
+    if (!addName.trim()) return;
+    setAddingSave(true);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/signup/add`,
+        { tournament_id: tournament.id, display_name: addName.trim(), discord_id: addDiscordId.trim() || null },
+        { withCredentials: true }
+      );
+      flash(data.message, data.ok);
+      if (data.ok) { setAddName(""); setAddDiscordId(""); onRefresh(); }
+    } catch {
+      flash("Failed to add signup.", false);
+    } finally {
+      setAddingSave(false);
+    }
+  };
+
+  const removeSelected = async () => {
+    if (selectedIds.size === 0) return;
+    setRemovingSave(true);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/signup/remove`,
+        { tournament_id: tournament.id, signup_ids: [...selectedIds] },
+        { withCredentials: true }
+      );
+      flash(data.message, data.ok);
+      if (data.ok) { setSelectedIds(new Set()); onRefresh(); }
+    } catch {
+      flash("Failed to remove signups.", false);
+    } finally {
+      setRemovingSave(false);
+    }
+  };
+
+  const saveTeamSize = async () => {
+    if (pendingTeamSize === teamSize) return;
+    setTeamSizeSaving(true);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/team-size`,
+        { tournament_id: tournament.id, team_size: pendingTeamSize },
+        { withCredentials: true }
+      );
+      flash(data.message, data.ok);
+      if (data.ok) onRefresh();
+    } catch {
+      flash("Failed to update team size.", false);
+    } finally {
+      setTeamSizeSaving(false);
+    }
   };
 
   // ---- API calls ---------------------------------------------------------
@@ -1133,10 +1219,15 @@ export default function AdminPanel({
       {/* Team builder (signup phase only) */}
       {isSignup && (
         <>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <p className="text-xs text-slate-400">
-              Drag players into teams · Teams need exactly {teamSize} players ({teamSize}v{teamSize})
-            </p>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <p className="text-xs text-slate-400">
+                Drag players into teams · Teams need exactly {teamSize} players
+              </p>
+              <span className="text-xs font-semibold px-2 py-0.5 rounded bg-purple-800/40 border border-purple-600/40 text-purple-300">
+                {teamSize}v{teamSize}
+              </span>
+            </div>
             <div className="flex gap-2">
               <button onClick={autoAssignAll} className="text-xs px-2.5 py-1 rounded border border-slate-600 text-slate-300 hover:border-slate-400">
                 Auto-assign all
@@ -1145,6 +1236,128 @@ export default function AdminPanel({
                 <Plus className="w-3 h-3" /> Add team
               </button>
             </div>
+          </div>
+
+          {/* Manage signups collapsible */}
+          <div className="mb-3 rounded-lg border border-slate-700/50 bg-slate-800/30">
+            <button
+              onClick={() => setManageOpen((o) => !o)}
+              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span className="font-medium">Manage Sign-ups</span>
+              <span className="ml-1 text-slate-600">({signups.length} players)</span>
+              {manageOpen ? <ChevronUp className="w-3.5 h-3.5 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 ml-auto" />}
+            </button>
+
+            {manageOpen && (
+              <div className="px-3 pb-3 flex flex-col gap-3 border-t border-slate-700/40 pt-3">
+
+                {/* Team size changer */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-400 shrink-0">Team size:</span>
+                  {([2, 3, 4] as const).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setPendingTeamSize(s)}
+                      className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                        pendingTeamSize === s
+                          ? "border-purple-500 bg-purple-700/30 text-purple-200"
+                          : "border-slate-600 text-slate-400 hover:border-slate-400"
+                      }`}
+                    >
+                      {s}v{s}
+                    </button>
+                  ))}
+                  {pendingTeamSize !== teamSize && (
+                    <button
+                      onClick={saveTeamSize}
+                      disabled={teamSizeSaving}
+                      className="text-xs px-3 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                    >
+                      {teamSizeSaving ? "Saving…" : "Save"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Add signup */}
+                <div className="flex flex-wrap gap-2 items-end">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Display name</label>
+                    <input
+                      className="bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-purple-400 w-40"
+                      placeholder="Player name…"
+                      value={addName}
+                      onChange={(e) => setAddName(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addSignup()}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] text-slate-500 uppercase tracking-wide">Discord ID (optional)</label>
+                    <input
+                      className="bg-slate-900/60 border border-slate-600 rounded px-2 py-1 text-sm text-white focus:outline-none focus:border-purple-400 w-40"
+                      placeholder="123456789…"
+                      value={addDiscordId}
+                      onChange={(e) => setAddDiscordId(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addSignup()}
+                    />
+                  </div>
+                  <button
+                    onClick={addSignup}
+                    disabled={addingSave || !addName.trim()}
+                    className="text-xs px-3 py-1.5 rounded bg-green-700/60 border border-green-600/50 text-green-200 hover:bg-green-700/80 disabled:opacity-40 flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    {addingSave ? "Adding…" : "Add"}
+                  </button>
+                </div>
+
+                {/* Bulk remove checklist */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">Remove players</span>
+                    <button onClick={selectAllSignups} className="text-[10px] text-slate-500 hover:text-purple-400 underline">All</button>
+                    <button onClick={deselectAllSignups} className="text-[10px] text-slate-500 hover:text-slate-300 underline">None</button>
+                    {selectedIds.size > 0 && (
+                      <button
+                        onClick={removeSelected}
+                        disabled={removingSave}
+                        className="ml-auto text-xs px-2.5 py-1 rounded bg-red-800/50 border border-red-600/50 text-red-200 hover:bg-red-800/70 disabled:opacity-40 flex items-center gap-1"
+                      >
+                        <UserMinus className="w-3 h-3" />
+                        {removingSave ? "Removing…" : `Remove ${selectedIds.size}`}
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-48 overflow-y-auto flex flex-col gap-0.5 pr-1">
+                    {signups.length === 0 ? (
+                      <p className="text-xs text-slate-600 italic">No sign-ups yet.</p>
+                    ) : (
+                      signups.map((s) => (
+                        <label key={s.id} className="flex items-center gap-2 px-2 py-1 rounded cursor-pointer hover:bg-slate-700/40 select-none">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(s.id)}
+                            onChange={() => toggleSelectId(s.id)}
+                            className="accent-red-500 w-3.5 h-3.5 shrink-0"
+                          />
+                          <span className="text-sm text-slate-300 truncate">{s.display_name}</span>
+                          {s.rank && (
+                            <span className="text-xs text-slate-500 shrink-0">{rankLabel(s.rank, s.rank_tier)}</span>
+                          )}
+                          {s.discord_id && (
+                            <span className="text-[10px] text-slate-600 shrink-0 ml-auto">Discord</span>
+                          )}
+                          {s.twitch_username && !s.discord_id && (
+                            <span className="text-[10px] text-purple-600 shrink-0 ml-auto">Twitch</span>
+                          )}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-4">
@@ -1984,6 +2197,484 @@ export function PlayerProfilesSection() {
               </table>
             </div>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Map pool presets section -------------------------------------------
+
+interface MapPoolPreset {
+  id: number;
+  name: string;
+  pool: Record<string, string[]>;
+}
+
+export function MapPoolPresetsSection({ tournamentId }: { tournamentId: number }) {
+  const [open, setOpen] = useState(false);
+  const [presets, setPresets] = useState<MapPoolPreset[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingPool, setEditingPool] = useState<Record<string, Set<string>>>({});
+  const [activeMode, setActiveMode] = useState(MODES[0].id);
+  const [saving, setSaving] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [isNew, setIsNew] = useState(false);
+
+  const flash = (text: string, ok: boolean) => {
+    setMsg({ text, ok });
+    setTimeout(() => setMsg(null), 3500);
+  };
+
+  const loadPresets = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament/admin/map-pool-presets`, { withCredentials: true });
+      setPresets(data.presets ?? []);
+      setLoaded(true);
+    } catch { /* ignore */ }
+  }, []);
+
+  const selectPreset = (preset: MapPoolPreset) => {
+    setSelectedId(preset.id);
+    setEditingName(preset.name);
+    setIsNew(false);
+    const pool: Record<string, Set<string>> = {};
+    for (const [modeId, stages] of Object.entries(preset.pool)) {
+      pool[modeId] = new Set(stages);
+    }
+    setEditingPool(pool);
+    setActiveMode(MODES[0].id);
+  };
+
+  const startNew = () => {
+    setSelectedId(null);
+    setEditingName("");
+    setEditingPool({});
+    setActiveMode(MODES[0].id);
+    setIsNew(true);
+  };
+
+  const toggleStage = (modeId: string, stageName: string) => {
+    setEditingPool((prev) => {
+      const cur = new Set(prev[modeId] ?? []);
+      if (cur.has(stageName)) cur.delete(stageName); else cur.add(stageName);
+      return { ...prev, [modeId]: cur };
+    });
+  };
+
+  const selectAll = (modeId: string) => setEditingPool((p) => ({ ...p, [modeId]: new Set(STAGES.map((s) => s.name)) }));
+  const clearAll  = (modeId: string) => setEditingPool((p) => ({ ...p, [modeId]: new Set() }));
+
+  const save = async () => {
+    if (!editingName.trim()) return;
+    setSaving(true);
+    try {
+      const serialized: Record<string, string[]> = {};
+      for (const [modeId, stages] of Object.entries(editingPool)) {
+        if (stages.size > 0) serialized[modeId] = [...stages];
+      }
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/map-pool-presets`,
+        { id: isNew ? null : selectedId, name: editingName.trim(), pool: serialized },
+        { withCredentials: true },
+      );
+      if (data.ok) {
+        flash("Preset saved.", true);
+        await loadPresets();
+        if (isNew && data.id) {
+          setSelectedId(data.id);
+          setIsNew(false);
+        }
+      } else {
+        flash(data.message ?? "Failed to save.", false);
+      }
+    } catch {
+      flash("Failed to save.", false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const applyToTournament = async () => {
+    if (!selectedId) return;
+    setApplying(true);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/map-pool-presets/apply`,
+        { preset_id: selectedId, tournament_id: tournamentId },
+        { withCredentials: true },
+      );
+      flash(data.message ?? (data.ok ? "Applied!" : "Failed."), data.ok);
+    } catch {
+      flash("Failed to apply.", false);
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const deletePreset = async () => {
+    if (!selectedId) return;
+    setDeleting(true);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/map-pool-presets/delete`,
+        { id: selectedId },
+        { withCredentials: true },
+      );
+      if (data.ok) {
+        flash("Preset deleted.", true);
+        setSelectedId(null);
+        setIsNew(false);
+        setEditingName("");
+        setEditingPool({});
+        await loadPresets();
+      } else {
+        flash(data.message ?? "Failed.", false);
+      }
+    } catch {
+      flash("Failed to delete.", false);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const currentAllowed = editingPool[activeMode] ?? new Set<string>();
+  const modeData = MODES.find((m) => m.id === activeMode);
+
+  return (
+    <div className="mt-4 border-t border-slate-700/40 pt-4">
+      <button
+        onClick={() => { setOpen((o) => !o); if (!open && !loaded) loadPresets(); }}
+        className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+      >
+        <MapIcon className="w-4 h-4" />
+        <span className="font-medium">Map Pool Presets</span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+        {presets.length > 0 && <span className="text-xs text-slate-600 ml-1">({presets.length})</span>}
+      </button>
+
+      {open && (
+        <div className="mt-3 flex flex-col gap-4">
+          {msg && (
+            <div className={`text-xs px-3 py-2 rounded border ${msg.ok ? "bg-green-900/40 text-green-300 border-green-700/40" : "bg-red-900/40 text-red-300 border-red-700/40"}`}>
+              {msg.text}
+            </div>
+          )}
+
+          {/* Preset list + new button */}
+          <div className="flex flex-wrap gap-1.5 items-center">
+            {presets.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => selectPreset(p)}
+                className={`px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                  selectedId === p.id && !isNew
+                    ? "bg-purple-600 border-purple-500 text-white"
+                    : "bg-slate-700/60 border-slate-600/50 text-slate-300 hover:text-white"
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+            <button
+              onClick={startNew}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-colors ${
+                isNew
+                  ? "bg-green-700/50 border-green-600/50 text-green-200"
+                  : "border-dashed border-slate-600/60 text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              <Plus className="w-3 h-3" /> New preset
+            </button>
+          </div>
+
+          {/* Editor — shown when a preset is selected or new */}
+          {(selectedId !== null || isNew) && (
+            <div className="flex flex-col gap-3 p-3 rounded-lg border border-slate-700/50 bg-slate-800/30">
+              {/* Name row */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  className="flex-1 min-w-[160px] bg-slate-900/60 border border-slate-600 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-purple-400"
+                  placeholder="Preset name…"
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                />
+                <button
+                  onClick={save}
+                  disabled={saving || !editingName.trim()}
+                  className="px-3 py-1.5 text-xs rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save Preset"}
+                </button>
+                {!isNew && (
+                  <>
+                    <button
+                      onClick={applyToTournament}
+                      disabled={applying}
+                      className="px-3 py-1.5 text-xs rounded bg-blue-700/60 border border-blue-600/50 text-blue-200 hover:bg-blue-700/80 disabled:opacity-50"
+                    >
+                      {applying ? "Applying…" : "Apply to Tournament"}
+                    </button>
+                    <button
+                      onClick={deletePreset}
+                      disabled={deleting}
+                      className="px-3 py-1.5 text-xs rounded border border-red-700/50 text-red-400 hover:bg-red-900/20 disabled:opacity-50"
+                    >
+                      {deleting ? "…" : <Trash2 className="w-3.5 h-3.5" />}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Mode tabs */}
+              <div className="flex flex-wrap gap-1">
+                {MODES.map((m) => {
+                  const cnt = editingPool[m.id]?.size ?? 0;
+                  return (
+                    <button
+                      key={m.id}
+                      onClick={() => setActiveMode(m.id)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        activeMode === m.id
+                          ? "bg-purple-600 text-white"
+                          : "bg-slate-700/60 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <img src={m.icon} alt="" className="w-3.5 h-3.5 object-contain" />
+                      {m.name}
+                      {cnt > 0 && <span className="text-[10px] opacity-70">({cnt})</span>}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Per-mode controls */}
+              <div className="flex items-center gap-2">
+                {modeData && (
+                  <span className="text-xs text-slate-400 flex items-center gap-1">
+                    <img src={modeData.icon} alt="" className="w-3.5 h-3.5 object-contain" />
+                    {modeData.name}
+                  </span>
+                )}
+                <span className="text-xs text-slate-600 ml-auto">
+                  {currentAllowed.size === 0 ? "All stages allowed" : `${currentAllowed.size} selected`}
+                </span>
+                <button onClick={() => selectAll(activeMode)} className="text-[10px] text-slate-500 hover:text-purple-400 underline">All</button>
+                <button onClick={() => clearAll(activeMode)} className="text-[10px] text-slate-500 hover:text-red-400 underline">None</button>
+              </div>
+
+              {/* Stage grid */}
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-1.5">
+                {STAGES.map((stage) => {
+                  const selected = currentAllowed.has(stage.name);
+                  return (
+                    <button
+                      key={stage.name}
+                      onClick={() => toggleStage(activeMode, stage.name)}
+                      className={`relative rounded-lg overflow-hidden border-2 transition-all text-left ${
+                        selected
+                          ? "border-purple-500 ring-1 ring-purple-500/30"
+                          : "border-slate-700/50 opacity-50 hover:opacity-80 hover:border-slate-500"
+                      }`}
+                    >
+                      <img src={stage.image} alt={stage.name} className="w-full h-10 object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+                      <span className="absolute bottom-0.5 left-1 right-1 text-[9px] font-semibold text-white leading-tight truncate">
+                        {stage.name}
+                      </span>
+                      {selected && (
+                        <div className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-purple-500 flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 text-white" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {presets.length === 0 && !isNew && (
+            <p className="text-xs text-slate-600 italic">No presets yet — click "New preset" to create one.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---- Overlay settings section -------------------------------------------
+
+type RibbonMode = "idle" | "active" | "open_lobby";
+
+export function OverlaySettingsSection() {
+  const [open, setOpen]           = useState(false);
+  const [ribbonMode, setRibbonMode] = useState<RibbonMode>("active");
+  const [stage, setStage]         = useState("");
+  const [modeId, setModeId]       = useState("");
+  const [roomCode, setRoomCode]   = useState("");
+  const [poolChannel, setPoolChannel] = useState("sneakyn");
+  const [saving, setSaving]       = useState(false);
+  const [msg, setMsg]             = useState<{ text: string; ok: boolean } | null>(null);
+  const [loaded, setLoaded]       = useState(false);
+
+  const load = useCallback(async () => {
+    if (loaded) return;
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament/overlay/settings`);
+      setRibbonMode(data.ribbon_mode ?? "active");
+      setStage(data.open_lobby_stage ?? "");
+      setModeId(data.open_lobby_mode_id ?? "");
+      setRoomCode(data.open_lobby_room_code ?? "");
+      setPoolChannel(data.weapon_pool_channel ?? "sneakyn");
+      setLoaded(true);
+    } catch { /* best-effort */ }
+  }, [loaded]);
+
+  const save = async () => {
+    setSaving(true);
+    const modeName = MODES.find((m) => m.id === modeId)?.name ?? null;
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/overlay-settings`,
+        {
+          ribbon_mode: ribbonMode,
+          open_lobby_stage: stage || null,
+          open_lobby_mode_id: modeId || null,
+          open_lobby_mode_name: modeName,
+          open_lobby_room_code: roomCode || null,
+          weapon_pool_channel: poolChannel.trim() || "sneakyn",
+        },
+        { withCredentials: true },
+      );
+      setMsg({ text: data.ok ? "Saved!" : (data.error ?? "Failed"), ok: !!data.ok });
+    } catch {
+      setMsg({ text: "Failed to save.", ok: false });
+    } finally {
+      setSaving(false);
+      setTimeout(() => setMsg(null), 3000);
+    }
+  };
+
+  const MODES_LABELS: { id: RibbonMode; label: string; hint: string }[] = [
+    { id: "idle",       label: "Idle",         hint: "Forces idle slides regardless of match state." },
+    { id: "active",     label: "Active Match",  hint: "Shows the pinned tournament match if one exists." },
+    { id: "open_lobby", label: "Open Lobby",    hint: "Shows public lobby info — set pool and room code below." },
+  ];
+
+  return (
+    <div className="mt-4 border-t border-slate-700/40 pt-4">
+      <button
+        onClick={() => { setOpen((o) => !o); if (!open) load(); }}
+        className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+      >
+        <Monitor className="w-4 h-4" />
+        <span className="font-medium">Overlay Settings</span>
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+
+      {open && (
+        <div className="mt-3 flex flex-col gap-4">
+          {msg && (
+            <div className={`text-xs px-3 py-2 rounded border ${msg.ok ? "bg-green-900/40 text-green-300 border-green-700/40" : "bg-red-900/40 text-red-300 border-red-700/40"}`}>
+              {msg.text}
+            </div>
+          )}
+
+          {/* Ribbon mode picker */}
+          <div>
+            <p className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold mb-2">Ribbon Mode</p>
+            <div className="flex gap-2 flex-wrap">
+              {MODES_LABELS.map(({ id, label }) => (
+                <button
+                  key={id}
+                  onClick={() => setRibbonMode(id)}
+                  className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
+                    ribbonMode === id
+                      ? "bg-purple-600 border-purple-500 text-white"
+                      : "bg-slate-700/60 border-slate-600/50 text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-600 mt-1.5">
+              {MODES_LABELS.find((m) => m.id === ribbonMode)?.hint}
+            </p>
+          </div>
+
+          {/* Open lobby fields */}
+          {ribbonMode === "open_lobby" && (
+            <div className="flex gap-3 flex-wrap">
+              <div className="flex flex-col gap-1 flex-1 min-w-[130px]">
+                <label className="text-[11px] text-slate-500 uppercase tracking-wide">Mode</label>
+                <select
+                  value={modeId}
+                  onChange={(e) => setModeId(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="">— not set —</option>
+                  {MODES.map((m) => (
+                    <option key={m.id} value={m.id}>{m.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+                <label className="text-[11px] text-slate-500 uppercase tracking-wide">Stage</label>
+                <select
+                  value={stage}
+                  onChange={(e) => setStage(e.target.value)}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500"
+                >
+                  <option value="">— not set —</option>
+                  {STAGES.map((s) => (
+                    <option key={s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1 min-w-[100px]">
+                <label className="text-[11px] text-slate-500 uppercase tracking-wide">Room Code</label>
+                <input
+                  value={roomCode}
+                  onChange={(e) => setRoomCode(e.target.value.slice(0, 8))}
+                  placeholder="e.g. 1234"
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 font-mono focus:outline-none focus:border-purple-500 w-full"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Weapon pool channel */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] text-slate-500 uppercase tracking-wide font-semibold">
+              Weapon Pool Channel
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                value={poolChannel}
+                onChange={(e) => setPoolChannel(e.target.value)}
+                placeholder="sneakyn"
+                className="bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-purple-500 w-40"
+              />
+              <span className="text-xs text-slate-600 truncate">
+                sendou.ink/u/{poolChannel || "sneakyn"}/builds
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-600">Used by the <code className="text-slate-500">!pool</code> Twitch command.</p>
+          </div>
+
+          <button
+            onClick={save}
+            disabled={saving}
+            className="self-start px-4 py-2 text-sm rounded bg-purple-600 hover:bg-purple-500 text-white disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
         </div>
       )}
     </div>

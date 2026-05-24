@@ -170,9 +170,29 @@ class WebServer:
         self.app.router.add_post(
             "/api/tournament/admin/map-pool", self.sneaky_api.tournament_admin_set_map_pool)
         self.app.router.add_get(
+            "/api/tournament/admin/map-pool-presets", self.sneaky_api.tournament_admin_list_presets)
+        self.app.router.add_post(
+            "/api/tournament/admin/map-pool-presets", self.sneaky_api.tournament_admin_save_preset)
+        self.app.router.add_post(
+            "/api/tournament/admin/map-pool-presets/delete", self.sneaky_api.tournament_admin_delete_preset)
+        self.app.router.add_post(
+            "/api/tournament/admin/map-pool-presets/apply", self.sneaky_api.tournament_admin_apply_preset)
+        self.app.router.add_get(
+            "/api/tournament/overlay/map-pool", self.sneaky_api.serve_overlay_map_pool)
+        self.app.router.add_post(
+            "/api/tournament/admin/signup/add", self.sneaky_api.tournament_admin_add_signup)
+        self.app.router.add_post(
+            "/api/tournament/admin/signup/remove", self.sneaky_api.tournament_admin_remove_signups)
+        self.app.router.add_post(
+            "/api/tournament/admin/team-size", self.sneaky_api.tournament_admin_update_team_size)
+        self.app.router.add_get(
             "/api/tournament/overlay", self.sneaky_api.serve_overlay_data)
         self.app.router.add_get(
             "/api/tournament/overlay-upnext", self.sneaky_api.serve_overlay_upnext)
+        self.app.router.add_get(
+            "/api/tournament/overlay/settings", self.sneaky_api.serve_overlay_settings)
+        self.app.router.add_post(
+            "/api/tournament/admin/overlay-settings", self.sneaky_api.tournament_admin_set_overlay_settings)
         self.app.router.add_get(
             "/api/player/{discord_id}", self.sneaky_api.serve_player_profile)
         self.app.router.add_get(

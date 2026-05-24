@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Helmet } from "react-helmet";
 import axios from "axios";
-import { Trophy, Swords, Users, Map as MapIcon, UserPlus, ChevronLeft, AlertCircle } from "lucide-react";
+import { Trophy, Swords, Users, Map as MapIcon, UserPlus, ChevronLeft, AlertCircle, Monitor } from "lucide-react";
 import { Link } from "react-router-dom";
 import PageWrapper from "../components/PageWrapper";
 import { useAuth } from "../hooks/useAuth";
@@ -11,14 +11,16 @@ import AdminPanel, {
   AdminMatchReporter,
   RoundScheduleSection,
   MapPoolSection,
+  MapPoolPresetsSection,
   PlayerProfilesSection,
+  OverlaySettingsSection,
 } from "../components/tournament/AdminPanel";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "";
 const GUILD_ID = import.meta.env.VITE_GUILD_ID ?? "";
 const ADMIN_DISCORD_IDS = ["339866237922181121"];
 
-type Tab = "organise" | "matches" | "schedule" | "players";
+type Tab = "organise" | "matches" | "schedule" | "players" | "overlay";
 
 interface AdminTournament {
   id: number;
@@ -30,10 +32,11 @@ interface AdminTournament {
 }
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { id: "organise", label: "Organise",       icon: Users  },
-  { id: "matches",  label: "Matches",        icon: Swords },
+  { id: "organise", label: "Organise",        icon: Users   },
+  { id: "matches",  label: "Matches",         icon: Swords  },
   { id: "schedule", label: "Schedule & Maps", icon: MapIcon },
-  { id: "players",  label: "Players",        icon: UserPlus },
+  { id: "players",  label: "Players",         icon: UserPlus },
+  { id: "overlay",  label: "Overlay",         icon: Monitor },
 ];
 
 export default function TournamentAdmin() {
@@ -159,7 +162,7 @@ export default function TournamentAdmin() {
           {TABS.map(({ id, label, icon: Icon }) => {
             if (id === "matches" && !isActive) return null;
             if (id === "schedule" && noTournament) return null;
-            return (
+            return ( // overlay tab always visible
               <button
                 key={id}
                 onClick={() => setTab(id)}
@@ -208,6 +211,15 @@ export default function TournamentAdmin() {
               </div>
               <div className="border-t border-slate-700/40 pt-6">
                 <h2 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                  <MapIcon className="w-4 h-4 text-slate-400" /> Map Pool Presets
+                </h2>
+                <p className="text-xs text-slate-500 mb-4">
+                  Save named map pools (e.g. "Competitive", "Meme") and apply them to the tournament in one click.
+                </p>
+                <MapPoolPresetsSection tournamentId={tournament!.id} />
+              </div>
+              <div className="border-t border-slate-700/40 pt-6">
+                <h2 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
                   <MapIcon className="w-4 h-4 text-slate-400" /> Map Pool
                 </h2>
                 <p className="text-xs text-slate-500 mb-4">
@@ -220,6 +232,18 @@ export default function TournamentAdmin() {
 
           {tab === "players" && (
             <PlayerProfilesSection />
+          )}
+
+          {tab === "overlay" && (
+            <div>
+              <h2 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
+                <Monitor className="w-4 h-4 text-slate-400" /> Overlay Settings
+              </h2>
+              <p className="text-xs text-slate-500 mb-4">
+                Control what the stream ribbon overlay displays. Changes take effect immediately for all connected overlays.
+              </p>
+              <OverlaySettingsSection />
+            </div>
           )}
 
         </div>
