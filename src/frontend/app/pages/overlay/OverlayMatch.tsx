@@ -555,6 +555,21 @@ function FullMatchOverlay({ match, scoreFlash }: {
             }}>
               {match.team1.name}
             </span>
+            {match.team1.members.length > 0 && (
+              <span style={{
+                display: "block",
+                fontSize: "clamp(7px, 1vw, 10px)",
+                fontWeight: 500,
+                color: "rgba(255,255,255,0.35)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                marginTop: "0.3vh",
+                letterSpacing: "0.04em",
+              }}>
+                {match.team1.members.join("  ·  ")}
+              </span>
+            )}
           </div>
 
           {/* Score */}
@@ -601,6 +616,21 @@ function FullMatchOverlay({ match, scoreFlash }: {
             }}>
               {match.team2.name}
             </span>
+            {match.team2.members.length > 0 && (
+              <span style={{
+                display: "block",
+                fontSize: "clamp(7px, 1vw, 10px)",
+                fontWeight: 500,
+                color: "rgba(255,255,255,0.35)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                marginTop: "0.3vh",
+                letterSpacing: "0.04em",
+              }}>
+                {match.team2.members.join("  ·  ")}
+              </span>
+            )}
           </div>
         </div>
 
@@ -870,6 +900,21 @@ function CornerMatchOverlay({ match, scoreFlash, stageKey }: {
                   {match.team2.name}
                 </span>
               </div>
+            </div>
+          </div>
+
+          {/* Player names */}
+          <div className="flex px-3 pb-2.5" style={{ gap: 0 }}>
+            <div style={{ width: 98, minWidth: 0 }}>
+              {match.team1.members.map((m) => (
+                <span key={m} className="block text-[8px] truncate" style={{ color: "rgba(255,255,255,0.28)", lineHeight: 1.5 }}>{m}</span>
+              ))}
+            </div>
+            <div style={{ flex: "0 0 120px" }} />
+            <div style={{ width: 98, minWidth: 0, textAlign: "right" }}>
+              {match.team2.members.map((m) => (
+                <span key={m} className="block text-[8px] truncate" style={{ color: "rgba(255,255,255,0.28)", lineHeight: 1.5 }}>{m}</span>
+              ))}
             </div>
           </div>
 

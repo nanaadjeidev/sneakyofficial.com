@@ -102,10 +102,29 @@ function useMobileKeyframes() {
   }, []);
 }
 
+// ── Overlay settings hook ─────────────────────────────────────────────────────
+
+interface OverlaySettings {
+  ribbon_mode: "idle" | "active" | "open_lobby";
+  open_lobby_stage: string | null;
+  open_lobby_mode_id: string | null;
+  open_lobby_mode_name: string | null;
+  open_lobby_room_code: string | null;
+}
+
+const DEFAULT_SETTINGS: OverlaySettings = {
+  ribbon_mode: "active",
+  open_lobby_stage: null,
+  open_lobby_mode_id: null,
+  open_lobby_mode_name: null,
+  open_lobby_room_code: null,
+};
+
 // ── Data hook ─────────────────────────────────────────────────────────────────
 
 function useMatchData() {
   const [match,      setMatch]      = useState<OverlayMatchData | null>(null);
+  const [settings,   setSettings]   = useState<OverlaySettings>(DEFAULT_SETTINGS);
   const [scoreFlash, setScoreFlash] = useState(false);
   const [stageKey,   setStageKey]   = useState(0);
   const scoreRef = { current: [0, 0] as [number, number] };
@@ -117,7 +136,14 @@ function useMatchData() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchMatch(); }, [fetchMatch]);
+  const fetchSettings = useCallback(async () => {
+    try {
+      const { data } = await axios.get(`${API_URL}/api/tournament/overlay/settings`);
+      setSettings(data as OverlaySettings);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => { fetchMatch(); fetchSettings(); }, [fetchMatch, fetchSettings]);
 
   useEffect(() => {
     if (!match) return;
@@ -145,7 +171,7 @@ function useMatchData() {
             setMatch(prev => prev && prev.match_id === msg.match_id
               ? { ...prev, team1_games: msg.team1_games ?? 0, team2_games: msg.team2_games ?? 0 }
               : prev);
-          } else if (msg.event === "counterpick_stage") {
+          } else if (msg.event === "counterpick_stage" || msg.event === "counterpick_set") {
             setMatch(prev => {
               if (!prev || prev.match_id !== msg.match_id) return prev;
               const games = prev.games.map(g => g.game_number === msg.game_number ? { ...g, stage_name: msg.stage_name } : g);
@@ -153,6 +179,14 @@ function useMatchData() {
               return { ...prev, games, stage_name: msg.game_number === currentGame ? msg.stage_name : prev.stage_name };
             });
             setStageKey(k => k + 1);
+          } else if (msg.event === "overlay_settings") {
+            setSettings({
+              ribbon_mode: msg.ribbon_mode ?? "active",
+              open_lobby_stage: msg.open_lobby_stage ?? null,
+              open_lobby_mode_id: msg.open_lobby_mode_id ?? null,
+              open_lobby_mode_name: msg.open_lobby_mode_name ?? null,
+              open_lobby_room_code: msg.open_lobby_room_code ?? null,
+            });
           }
         } catch { /* ignore */ }
       };
@@ -162,7 +196,7 @@ function useMatchData() {
     return () => { dead = true; ws?.close(); };
   }, [fetchMatch]);
 
-  return { match, scoreFlash, stageKey };
+  return { match, settings, scoreFlash, stageKey };
 }
 
 // ── Root export ───────────────────────────────────────────────────────────────
@@ -176,11 +210,83 @@ export default function OverlayRibbonMobile() {
     return () => document.body.classList.remove("overlay-mode");
   }, []);
 
-  const { match, scoreFlash, stageKey } = useMatchData();
+  const { match, settings, scoreFlash, stageKey } = useMatchData();
   const { slide, visible, total, idx } = useIdleSlide();
 
+  const ribbonMode = settings.ribbon_mode;
+
+  // ── Open lobby ────────────────────────────────────────────────────────────
+  if (ribbonMode === "open_lobby") {
+    const lobbyStage   = settings.open_lobby_stage;
+    const lobbyModeId  = settings.open_lobby_mode_id;
+    const lobbyModeName = settings.open_lobby_mode_name;
+    const lobbyCode    = settings.open_lobby_room_code;
+    const stageData    = lobbyStage ? STAGES.find(s => s.name === lobbyStage) : null;
+    const modeData     = lobbyModeId ? MODES.find(m => m.id === lobbyModeId) : null;
+
+    return (
+      <div
+        data-overlay
+        className="mob-ribbon-in"
+        style={{
+          width: "100%", height: "100%",
+          display: "flex", alignItems: "center",
+          padding: "clamp(10px,2vh,18px) clamp(14px,4vw,28px)",
+          boxSizing: "border-box",
+          background: "rgba(6,6,18,0.95)",
+          backdropFilter: "blur(24px) saturate(160%)",
+          WebkitBackdropFilter: "blur(24px) saturate(160%)",
+          borderTop: "3px solid rgba(52,211,153,0.5)",
+          position: "relative", overflow: "hidden",
+          gap: "clamp(10px,3vw,20px)",
+        }}
+      >
+        <div className="mob-accent-cycle" style={{ position: "absolute", top: 0, left: 0, right: 0, height: 3, pointerEvents: "none" }} />
+
+        {/* Logo */}
+        <div className="mob-icon-glow" style={{ width: "clamp(36px,10vw,56px)", height: "clamp(36px,10vw,56px)", borderRadius: "50%", overflow: "hidden", border: "2.5px solid rgba(52,211,153,0.8)", flexShrink: 0 }}>
+          <img src="/android-chrome-512x512.png" alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+        </div>
+
+        {/* Text */}
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "clamp(2px,0.5vh,5px)" }}>
+          <span style={{ fontSize: "clamp(8px,1.1vh,12px)", fontWeight: 800, letterSpacing: "0.20em", textTransform: "uppercase", color: "rgba(52,211,153,0.9)", lineHeight: 1 }}>
+            OPEN LOBBY
+          </span>
+          {lobbyCode && (
+            <span style={{ fontSize: "clamp(14px,3vh,26px)", fontWeight: 900, color: "#fff", lineHeight: 1, fontFamily: "'Courier New', Courier, monospace" }}>
+              Room {lobbyCode}
+            </span>
+          )}
+          {(lobbyModeName || lobbyStage) && (
+            <span style={{ fontSize: "clamp(10px,1.5vh,14px)", fontWeight: 600, color: "rgba(255,255,255,0.50)", lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {[modeData ? `${modeData.name}` : lobbyModeName, lobbyStage].filter(Boolean).join(" · ")}
+            </span>
+          )}
+        </div>
+
+        {/* Stage thumbnail */}
+        {stageData && (
+          <div style={{ flexShrink: 0, width: "clamp(60px,18vw,110px)", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5vh" }}>
+            <div style={{ position: "relative", width: "100%", height: "clamp(28px,5.5vh,44px)", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.14)" }}>
+              <img src={stageData.image} alt={lobbyStage ?? ""} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+              {modeData && (
+                <div style={{ position: "absolute", bottom: 2, right: 3 }}>
+                  <img src={modeData.icon} alt={modeData.name} style={{ width: "clamp(10px,2.5vw,16px)", height: "clamp(10px,2.5vw,16px)", objectFit: "contain", filter: "drop-shadow(0 1px 3px rgba(0,0,0,0.9))" }} />
+                </div>
+              )}
+            </div>
+            <span style={{ fontSize: "clamp(8px,2vw,11px)", fontWeight: 700, color: "rgba(255,255,255,0.80)", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", lineHeight: 1 }}>
+              {lobbyStage}
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Idle ──────────────────────────────────────────────────────────────────
-  if (!match) {
+  if (ribbonMode === "idle" || !match) {
     return (
       <div
         data-overlay
@@ -290,6 +396,11 @@ export default function OverlayRibbonMobile() {
           <span style={{ fontSize: "clamp(13px,4.5vw,28px)", fontWeight: 900, lineHeight: 1, color: isT1Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)", textShadow: isT1Winner ? "0 0 24px rgba(52,211,153,0.6)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textAlign: "right" }}>
             {match.team1.name}
           </span>
+          {match.team1.members.length > 0 && (
+            <span style={{ fontSize: "clamp(6px,1.8vw,9px)", fontWeight: 500, color: "rgba(255,255,255,0.30)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", textAlign: "right", letterSpacing: "0.04em" }}>
+              {match.team1.members.join(" · ")}
+            </span>
+          )}
           {bestOf > 1 && (
             <div style={{ display: "flex", gap: "1.2vw", flexDirection: "row-reverse" }}>
               {pipsT1.map((f, i) => (
@@ -311,6 +422,11 @@ export default function OverlayRibbonMobile() {
           <span style={{ fontSize: "clamp(13px,4.5vw,28px)", fontWeight: 900, lineHeight: 1, color: isT2Winner ? "rgb(110,231,183)" : "rgba(255,255,255,0.95)", textShadow: isT2Winner ? "0 0 24px rgba(52,211,153,0.6)" : "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%" }}>
             {match.team2.name}
           </span>
+          {match.team2.members.length > 0 && (
+            <span style={{ fontSize: "clamp(6px,1.8vw,9px)", fontWeight: 500, color: "rgba(255,255,255,0.30)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", letterSpacing: "0.04em" }}>
+              {match.team2.members.join(" · ")}
+            </span>
+          )}
           {bestOf > 1 && (
             <div style={{ display: "flex", gap: "1.2vw" }}>
               {pipsT2.map((f, i) => (

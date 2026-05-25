@@ -523,6 +523,16 @@ class SneakyApi:
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin
+    async def admin_delete_player(self, request: Request, admin_id: int) -> web.Response:
+        from ..profile import ProfileManager
+        try:
+            player_id = int(request.match_info["player_id"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid player_id"}, status=400)
+        ok, msg = await ProfileManager.delete_player(player_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
     async def tournament_admin_save_schedule(self, request: Request, admin_id: int) -> web.Response:
         try:
             body = await request.json()
@@ -679,6 +689,19 @@ class SneakyApi:
             return web.json_response({"error": "Invalid body"}, status=400)
 
         ok, msg = await TournamentManager.admin_revert_match(match_id)
+        return web.json_response({"ok": ok, "message": msg})
+
+    @verify_tournament_admin
+    async def tournament_admin_revert_game(self, request: Request, admin_id: int) -> web.Response:
+        """Revert the last confirmed game within a match, undoing its TrueSkill update."""
+        try:
+            body = await request.json()
+            match_id = int(body["match_id"])
+            game_number = int(body["game_number"])
+        except (KeyError, ValueError, TypeError):
+            return web.json_response({"error": "Invalid body"}, status=400)
+
+        ok, msg = await TournamentManager.admin_revert_game(match_id, game_number)
         return web.json_response({"ok": ok, "message": msg})
 
     @verify_tournament_admin

@@ -1132,15 +1132,13 @@ function MatchReportCard({
           <p className="text-xs text-amber-400/80 mb-1">
             {match.is_home_team
               ? "You are the home team. Create the private lobby."
-              : isAdmin
-              ? "Room code (admin view)."
               : "You are the away team. Join the private lobby."}
           </p>
           <p className="text-lg font-mono font-bold tracking-widest text-amber-300">{match.room_code}</p>
         </div>
       )}
-      {hasOpponent && !match.room_code && !match.is_home_team && !isAdmin && (
-        <p className="mb-4 text-xs text-slate-500">You are the away team. Waiting for the home team to set the room code.</p>
+      {hasOpponent && !match.room_code && (
+        <p className="mb-4 text-xs text-slate-500">Room code not yet assigned — check back shortly.</p>
       )}
       {!hasOpponent && (
         <p className="mb-4 text-xs text-slate-500">Waiting for your opponent to be decided from the previous match.</p>
@@ -1773,7 +1771,7 @@ export default function Tournament() {
         {/* Sign-up mode */}
         {tournament?.status === "signup" && (
           <>
-            {tournament.team_size && tournament.team_size !== 4 && (
+            {tournament.team_size && (
               <p className="text-center text-sm text-purple-300 mb-2">
                 Format: {tournament.team_size}v{tournament.team_size}
               </p>

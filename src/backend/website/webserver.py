@@ -156,6 +156,8 @@ class WebServer:
         self.app.router.add_post(
             "/api/tournament/admin/match/revert", self.sneaky_api.tournament_admin_revert_match)
         self.app.router.add_post(
+            "/api/tournament/admin/game/revert", self.sneaky_api.tournament_admin_revert_game)
+        self.app.router.add_post(
             "/api/tournament/admin/schedule", self.sneaky_api.tournament_admin_save_schedule)
         self.app.router.add_post(
             "/api/tournament/admin/pin-match", self.sneaky_api.tournament_admin_pin_match)
@@ -211,6 +213,8 @@ class WebServer:
             "/api/admin/player/{player_id}/twitch-native/toggle", self.sneaky_api.admin_toggle_twitch_native)
         self.app.router.add_post(
             "/api/admin/player/{player_id}/tournament-wins", self.sneaky_api.admin_adjust_tournament_wins)
+        self.app.router.add_delete(
+            "/api/admin/player/{player_id}", self.sneaky_api.admin_delete_player)
         self.app.router.add_post(
             "/api/admin/tournament/end", self.sneaky_api.admin_end_tournament)
 

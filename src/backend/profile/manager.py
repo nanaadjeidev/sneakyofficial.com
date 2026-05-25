@@ -374,7 +374,8 @@ class ProfileManager:
 
             async def get_team_players(team_id):
                 await cur.execute(
-                    """SELECT s.discord_id, s.display_name,
+                    """SELECT COALESCE(s.discord_id, p.discord_id) AS discord_id,
+                              s.display_name,
                               COALESCE(p.trueskill_mu, 25.0) AS mu,
                               COALESCE(p.trueskill_sigma, 8.333) AS sigma,
                               COALESCE(p.games_won, 0) AS games_won,
@@ -385,7 +386,11 @@ class ProfileManager:
                               COALESCE(p.special_tournament_wins, 0) AS special_tournament_wins
                        FROM tournament_team_members ttm
                        JOIN tournament_signups s ON s.id = ttm.signup_id
-                       LEFT JOIN player_profiles p ON p.discord_id = s.discord_id
+                       LEFT JOIN player_profiles p ON (
+                           (s.discord_id IS NOT NULL AND p.discord_id = s.discord_id)
+                           OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(p.twitch_username) = LOWER(s.twitch_username))
+                       )
                        WHERE ttm.team_id = %s""",
                     (team_id,)
                 )
@@ -561,6 +566,268 @@ class ProfileManager:
             )
 
     @staticmethod
+    async def update_trueskill_for_game(
+        match_id: int,
+        game_number: int,
+        winner_team_id: int,
+    ) -> list[str]:
+        """Update TrueSkill for a single confirmed game and save a per-game snapshot."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                """SELECT m.team1_id, m.team2_id, m.tournament_id, t.affects_rating
+                   FROM tournament_matches m
+                   JOIN tournaments t ON t.id = m.tournament_id
+                   WHERE m.id = %s""",
+                (match_id,)
+            )
+            match = await cur.fetchone()
+            if not match:
+                return []
+
+            affects_rating = bool(match["affects_rating"])
+            loser_team_id = match["team2_id"] if winner_team_id == match["team1_id"] else match["team1_id"]
+
+            async def get_team_players(team_id):
+                await cur.execute(
+                    """SELECT COALESCE(s.discord_id, p.discord_id) AS discord_id,
+                              s.display_name,
+                              COALESCE(p.trueskill_mu, 25.0) AS mu,
+                              COALESCE(p.trueskill_sigma, 8.333) AS sigma,
+                              COALESCE(p.games_won, 0) AS games_won,
+                              COALESCE(p.games_lost, 0) AS games_lost,
+                              COALESCE(p.matches_won, 0) AS matches_won,
+                              COALESCE(p.matches_lost, 0) AS matches_lost,
+                              COALESCE(p.tournament_wins, 0) AS tournament_wins,
+                              COALESCE(p.special_tournament_wins, 0) AS special_tournament_wins
+                       FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON s.id = ttm.signup_id
+                       LEFT JOIN player_profiles p ON (
+                           (s.discord_id IS NOT NULL AND p.discord_id = s.discord_id)
+                           OR (s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                               AND LOWER(p.twitch_username) = LOWER(s.twitch_username))
+                       )
+                       WHERE ttm.team_id = %s""",
+                    (team_id,)
+                )
+                return list(await cur.fetchall())
+
+            skipped: list[str] = []
+            winners = await get_team_players(winner_team_id)
+            losers = await get_team_players(loser_team_id)
+
+            # Ensure per-game snapshot table
+            await cur.execute("""
+                CREATE TABLE IF NOT EXISTS tournament_game_ratings (
+                  id INT AUTO_INCREMENT PRIMARY KEY,
+                  match_id INT NOT NULL,
+                  game_number INT NOT NULL,
+                  discord_id BIGINT NOT NULL,
+                  mu_before FLOAT NOT NULL,
+                  sigma_before FLOAT NOT NULL,
+                  games_won_before INT NOT NULL DEFAULT 0,
+                  games_lost_before INT NOT NULL DEFAULT 0,
+                  matches_won_before INT NOT NULL DEFAULT 0,
+                  matches_lost_before INT NOT NULL DEFAULT 0,
+                  tournament_wins_before INT NOT NULL DEFAULT 0,
+                  special_tournament_wins_before INT NOT NULL DEFAULT 0,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  UNIQUE KEY uq (match_id, game_number, discord_id)
+                )
+            """)
+
+            # Ensure pre-match snapshot table
+            try:
+                await cur.execute("""
+                    CREATE TABLE IF NOT EXISTS tournament_match_ratings (
+                      id INT AUTO_INCREMENT PRIMARY KEY,
+                      match_id INT NOT NULL,
+                      discord_id BIGINT NOT NULL,
+                      mu_before FLOAT NOT NULL,
+                      sigma_before FLOAT NOT NULL,
+                      games_won_before INT NOT NULL DEFAULT 0,
+                      games_lost_before INT NOT NULL DEFAULT 0,
+                      matches_won_before INT NOT NULL DEFAULT 0,
+                      matches_lost_before INT NOT NULL DEFAULT 0,
+                      tournament_wins_before INT NOT NULL DEFAULT 0,
+                      special_tournament_wins_before INT NOT NULL DEFAULT 0,
+                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE KEY uq (match_id, discord_id)
+                    )
+                """)
+            except Exception:
+                pass
+
+            for player in winners + losers:
+                if not player["discord_id"]:
+                    continue
+                # Per-game snapshot (one per game per player)
+                await cur.execute(
+                    """INSERT IGNORE INTO tournament_game_ratings
+                       (match_id, game_number, discord_id, mu_before, sigma_before,
+                        games_won_before, games_lost_before, matches_won_before, matches_lost_before,
+                        tournament_wins_before, special_tournament_wins_before)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (match_id, game_number, player["discord_id"],
+                     player["mu"], player["sigma"],
+                     player["games_won"], player["games_lost"],
+                     player["matches_won"], player["matches_lost"],
+                     player["tournament_wins"], player["special_tournament_wins"])
+                )
+                # Pre-match snapshot for whole-match reverts (INSERT IGNORE keeps only game 1 state)
+                await cur.execute(
+                    """INSERT IGNORE INTO tournament_match_ratings
+                       (match_id, discord_id, mu_before, sigma_before,
+                        games_won_before, games_lost_before, matches_won_before, matches_lost_before,
+                        tournament_wins_before, special_tournament_wins_before)
+                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                    (match_id, player["discord_id"],
+                     player["mu"], player["sigma"],
+                     player["games_won"], player["games_lost"],
+                     player["matches_won"], player["matches_lost"],
+                     player["tournament_wins"], player["special_tournament_wins"])
+                )
+
+            if affects_rating:
+                w_ratings = [_TS_ENV.create_rating(p["mu"], p["sigma"]) for p in winners]
+                l_ratings = [_TS_ENV.create_rating(p["mu"], p["sigma"]) for p in losers]
+                w_ratings, l_ratings = _TS_ENV.rate([w_ratings, l_ratings], ranks=[0, 1])
+
+                for player, new_r in zip(winners, w_ratings):
+                    if not player["discord_id"]:
+                        skipped.append(player["display_name"])
+                        continue
+                    await cur.execute(
+                        """INSERT INTO player_profiles
+                               (discord_id, display_name, trueskill_mu, trueskill_sigma,
+                                games_won, rank, first_played_at)
+                           VALUES (%s, '', %s, %s, 1, 1, NOW())
+                           ON DUPLICATE KEY UPDATE
+                             trueskill_mu = %s,
+                             trueskill_sigma = %s,
+                             games_won = games_won + 1,
+                             rank = COALESCE(rank, 1),
+                             first_played_at = COALESCE(first_played_at, NOW())""",
+                        (player["discord_id"], new_r.mu, new_r.sigma, new_r.mu, new_r.sigma)
+                    )
+
+                for player, new_r in zip(losers, l_ratings):
+                    if not player["discord_id"]:
+                        skipped.append(player["display_name"])
+                        continue
+                    await cur.execute(
+                        """INSERT INTO player_profiles
+                               (discord_id, display_name, trueskill_mu, trueskill_sigma,
+                                games_lost, rank, first_played_at)
+                           VALUES (%s, '', %s, %s, 1, 1, NOW())
+                           ON DUPLICATE KEY UPDATE
+                             trueskill_mu = %s,
+                             trueskill_sigma = %s,
+                             games_lost = games_lost + 1,
+                             rank = COALESCE(rank, 1),
+                             first_played_at = COALESCE(first_played_at, NOW())""",
+                        (player["discord_id"], new_r.mu, new_r.sigma, new_r.mu, new_r.sigma)
+                    )
+            else:
+                for player in winners:
+                    if not player["discord_id"]:
+                        skipped.append(player["display_name"])
+                        continue
+                    await cur.execute(
+                        """INSERT INTO player_profiles (discord_id, display_name, games_won, rank, first_played_at)
+                           VALUES (%s, '', 1, 1, NOW())
+                           ON DUPLICATE KEY UPDATE
+                             games_won = games_won + 1,
+                             rank = COALESCE(rank, 1),
+                             first_played_at = COALESCE(first_played_at, NOW())""",
+                        (player["discord_id"],)
+                    )
+                for player in losers:
+                    if not player["discord_id"]:
+                        skipped.append(player["display_name"])
+                        continue
+                    await cur.execute(
+                        """INSERT INTO player_profiles (discord_id, display_name, games_lost, rank, first_played_at)
+                           VALUES (%s, '', 1, 1, NOW())
+                           ON DUPLICATE KEY UPDATE
+                             games_lost = games_lost + 1,
+                             rank = COALESCE(rank, 1),
+                             first_played_at = COALESCE(first_played_at, NOW())""",
+                        (player["discord_id"],)
+                    )
+
+        return skipped
+
+    @staticmethod
+    async def revert_trueskill_for_game(match_id: int, game_number: int) -> None:
+        """Restore pre-game ratings from the per-game snapshot and delete it."""
+        async with DBContextManager() as cur:
+            try:
+                await cur.execute(
+                    """SELECT discord_id, mu_before, sigma_before,
+                              games_won_before, games_lost_before,
+                              matches_won_before, matches_lost_before,
+                              tournament_wins_before, special_tournament_wins_before
+                       FROM tournament_game_ratings
+                       WHERE match_id = %s AND game_number = %s""",
+                    (match_id, game_number)
+                )
+                rows = await cur.fetchall()
+            except Exception:
+                return
+            for row in rows:
+                (discord_id, mu, sigma, gw, gl, mw, ml, tw, stw) = row
+                await cur.execute(
+                    """UPDATE player_profiles
+                       SET trueskill_mu = %s, trueskill_sigma = %s,
+                           games_won = %s, games_lost = %s,
+                           matches_won = %s, matches_lost = %s,
+                           tournament_wins = %s, special_tournament_wins = %s
+                       WHERE discord_id = %s""",
+                    (mu, sigma, gw, gl, mw, ml, tw, stw, discord_id)
+                )
+            await cur.execute(
+                "DELETE FROM tournament_game_ratings WHERE match_id = %s AND game_number = %s",
+                (match_id, game_number)
+            )
+
+    @staticmethod
+    async def update_match_result(match_id: int, winner_team_id: int) -> None:
+        """Increment matches_won / matches_lost for all players after a series ends."""
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                """SELECT m.team1_id, m.team2_id
+                   FROM tournament_matches m WHERE m.id = %s""",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return
+            loser_team_id = row["team2_id"] if winner_team_id == row["team1_id"] else row["team1_id"]
+
+            async def get_discord_ids(team_id):
+                await cur.execute(
+                    """SELECT COALESCE(s.discord_id, p.discord_id) AS discord_id
+                       FROM tournament_team_members ttm
+                       JOIN tournament_signups s ON s.id = ttm.signup_id
+                       LEFT JOIN player_profiles p ON (
+                           s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                           AND LOWER(p.twitch_username) = LOWER(s.twitch_username)
+                       )
+                       WHERE ttm.team_id = %s""",
+                    (team_id,)
+                )
+                return [r["discord_id"] for r in await cur.fetchall() if r["discord_id"]]
+
+            for did in await get_discord_ids(winner_team_id):
+                await cur.execute(
+                    "UPDATE player_profiles SET matches_won = matches_won + 1 WHERE discord_id = %s", (did,)
+                )
+            for did in await get_discord_ids(loser_team_id):
+                await cur.execute(
+                    "UPDATE player_profiles SET matches_lost = matches_lost + 1 WHERE discord_id = %s", (did,)
+                )
+
+    @staticmethod
     async def adjust_tournament_wins(player_id: int, delta: int) -> tuple[bool, str]:
         """Add (delta=1) or retract (delta=-1) a tournament win for a player."""
         async with DBContextManager() as cur:
@@ -579,20 +846,38 @@ class ProfileManager:
         return True, f"Tournament wins updated to {new_val}."
 
     @staticmethod
-    async def _check_tournament_winner(tournament_id: int, last_winner_team_id: int, affects_rating: bool = True) -> None:
+    async def delete_player(player_id: int) -> tuple[bool, str]:
+        async with DBContextManager() as cur:
+            await cur.execute("SELECT display_name FROM player_profiles WHERE id = %s", (player_id,))
+            row = await cur.fetchone()
+            if not row:
+                return False, "Player not found."
+            name = row[0]
+            await cur.execute("DELETE FROM player_profiles WHERE id = %s", (player_id,))
+        return True, f"Player '{name}' deleted."
+
+    @staticmethod
+    async def _check_tournament_winner(tournament_id: int, last_winner_team_id: int, affects_rating: bool = True, skip_remaining_check: bool = False) -> None:
         """If the final match just completed, credit tournament wins to the winning team."""
         async with DBContextManager(use_dict=True) as cur:
-            await cur.execute(
-                "SELECT COUNT(*) AS remaining FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
-                (tournament_id,)
-            )
-            if (await cur.fetchone())["remaining"]:
-                return  # Not the final match
+            if not skip_remaining_check:
+                await cur.execute(
+                    "SELECT COUNT(*) AS remaining FROM tournament_matches WHERE tournament_id = %s AND status != 'complete'",
+                    (tournament_id,)
+                )
+                if (await cur.fetchone())["remaining"]:
+                    return  # Not the final match
 
             await cur.execute(
-                """SELECT s.discord_id FROM tournament_team_members ttm
+                """SELECT COALESCE(s.discord_id, pp.discord_id) AS discord_id
+                   FROM tournament_team_members ttm
                    JOIN tournament_signups s ON s.id = ttm.signup_id
-                   WHERE ttm.team_id = %s AND s.discord_id IS NOT NULL""",
+                   LEFT JOIN player_profiles pp ON (
+                       s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                       AND LOWER(pp.twitch_username) = LOWER(s.twitch_username)
+                   )
+                   WHERE ttm.team_id = %s
+                   AND COALESCE(s.discord_id, pp.discord_id) IS NOT NULL""",
                 (last_winner_team_id,)
             )
             winners = await cur.fetchall()
@@ -601,21 +886,32 @@ class ProfileManager:
                 await cur.execute(
                     f"""INSERT INTO player_profiles (discord_id, display_name, {win_col}, tournaments_played)
                        VALUES (%s, '', 1, 1)
-                       ON DUPLICATE KEY UPDATE {win_col} = {win_col} + 1""",
+                       ON DUPLICATE KEY UPDATE {win_col} = {win_col} + 1, tournaments_played = tournaments_played + 1""",
                     (w["discord_id"],)
                 )
 
-            # Increment tournaments_played for everyone in the tournament
+            # Increment tournaments_played for all participants (winners already incremented above)
+            winner_ids = {w["discord_id"] for w in winners if w["discord_id"]}
             await cur.execute(
-                """UPDATE player_profiles SET tournaments_played = tournaments_played + 1
-                   WHERE discord_id IN (
-                     SELECT DISTINCT s.discord_id FROM tournament_signups s
-                     JOIN tournament_team_members ttm ON ttm.signup_id = s.id
-                     JOIN tournament_teams tt ON tt.id = ttm.team_id
-                     WHERE tt.tournament_id = %s AND s.discord_id IS NOT NULL
-                   )""",
+                """SELECT DISTINCT COALESCE(s.discord_id, pp.discord_id) AS discord_id
+                   FROM tournament_signups s
+                   JOIN tournament_team_members ttm ON ttm.signup_id = s.id
+                   JOIN tournament_teams tt ON tt.id = ttm.team_id
+                   LEFT JOIN player_profiles pp ON (
+                       s.discord_id IS NULL AND s.twitch_username IS NOT NULL
+                       AND LOWER(pp.twitch_username) = LOWER(s.twitch_username)
+                   )
+                   WHERE tt.tournament_id = %s
+                   AND COALESCE(s.discord_id, pp.discord_id) IS NOT NULL""",
                 (tournament_id,)
             )
+            all_participant_ids = [r["discord_id"] for r in await cur.fetchall() if r["discord_id"] not in winner_ids]
+            if all_participant_ids:
+                fmt = ",".join(["%s"] * len(all_participant_ids))
+                await cur.execute(
+                    f"UPDATE player_profiles SET tournaments_played = tournaments_played + 1 WHERE discord_id IN ({fmt})",
+                    all_participant_ids,
+                )
 
     # ------------------------------------------------------------------ #
     #  Leaderboard                                                         #

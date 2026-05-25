@@ -177,6 +177,60 @@ class TournamentExt(interactions.Extension):
     #  Internal announcement helpers                                       #
     # ------------------------------------------------------------------ #
 
+    async def _dm_match_players(self, match_data: dict) -> None:
+        """DM every player on both sides with their match details."""
+        match_id = match_data["id"]
+        async with DBContextManager(use_dict=True) as cur:
+            await cur.execute(
+                "SELECT room_code FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+        if not row:
+            return
+
+        room_code = row["room_code"] or "????"
+
+        round_num = match_data["round"]
+        total_rounds = match_data["total_rounds"]
+        match_num = match_data["match_number"]
+        tournament_name = match_data["tournament_name"]
+        schedule = match_data.get("schedule")
+        teams = match_data["teams"]
+
+        round_label = _round_label(round_num, total_rounds)
+        sched_line = _schedule_line(schedule) if schedule else ""
+
+        for team in teams:
+            opponent = next(t for t in teams if t["id"] != team["id"])
+
+            lines = [
+                f"⚔️ **Your next match is ready — {tournament_name}**",
+                "",
+                f"**Your Team:** {team['name']}",
+                f"**Opponent:** {opponent['name']}",
+                f"**Round:** {round_label} · Match {match_num}",
+            ]
+            if sched_line:
+                lines.append(f"**Map:** {sched_line}")
+            lines += [
+                "",
+                f"**Room Code:** `{room_code}` — join this room to play your match",
+                "",
+                f"**Bracket:** {BRACKET_URL}",
+            ]
+            msg = "\n".join(lines)
+
+            for member in team["members"]:
+                discord_id = member.get("discord_id")
+                if not discord_id:
+                    continue
+                try:
+                    user = await self.bot.fetch_user(discord_id)
+                    await user.send(msg)
+                except Exception as exc:
+                    logger.debug("Could not DM player %s for match %s: %s", discord_id, match_id, exc)
+
     async def _post_bracket_announcement(self, channel, tournament_id: int, tournament_name: str) -> None:
         """Post the bracket-locked announcement with R1 match embeds."""
         matches = await TournamentManager.get_r1_matches_for_announcement(tournament_id)
@@ -204,6 +258,7 @@ class TournamentExt(interactions.Extension):
             if mentions:
                 content += f"\n{mentions}"
             await channel.send(content=content, embed=embed)
+            await self._dm_match_players(m)
 
     async def _announce_next_match(self, confirmed_match_id: int) -> None:
         """After a win is confirmed, post the winner's next match if both teams are ready."""
@@ -214,7 +269,11 @@ class TournamentExt(interactions.Extension):
                 (confirmed_match_id,)
             )
             row = await cur.fetchone()
-            if not row or not row["channel_id"]:
+            if not row:
+                logger.warning("_announce_next_match: match %s not found", confirmed_match_id)
+                return
+            if not row["channel_id"]:
+                logger.warning("_announce_next_match: tournament has no channel_id for match %s", confirmed_match_id)
                 return
 
             tournament_id = row["tournament_id"]
@@ -230,7 +289,12 @@ class TournamentExt(interactions.Extension):
             )
             next_match_row = await cur.fetchone()
             if not next_match_row:
-                return  # both teams not decided yet, or tournament over
+                logger.info(
+                    "_announce_next_match: no ready match at R%s M%s for tournament %s "
+                    "(other team not yet decided, or this was the final)",
+                    next_round, next_match_num, tournament_id,
+                )
+                return
 
         match_data = await TournamentManager.get_match_for_announcement(
             tournament_id, next_round, next_match_num
@@ -250,6 +314,7 @@ class TournamentExt(interactions.Extension):
             if mentions:
                 content += f"\n{mentions}"
             await channel.send(content=content, embed=embed)
+            await self._dm_match_players(match_data)
         except Exception as e:
             logger.warning("Could not post next match announcement: %s", e)
 
@@ -818,9 +883,6 @@ class TournamentExt(interactions.Extension):
         if not match:
             await ctx.send("You don't have an active match right now.", ephemeral=True)
             return
-        if match["status"] == "awaiting_confirmation":
-            await ctx.send("Your match result is already reported — waiting for the opposing team to confirm.", ephemeral=True)
-            return
 
         player_team_id = match["player_team_id"]
         team1_id = match["team1_id"]
@@ -828,6 +890,24 @@ class TournamentExt(interactions.Extension):
         match_id = match["id"]
 
         winner_team_id = player_team_id if result == "win" else (team2_id if player_team_id == team1_id else team1_id)
+
+        if match["status"] == "awaiting_confirmation":
+            reported_winner_id = match.get("reported_winner_id")
+            if reported_winner_id and winner_team_id == reported_winner_id and player_team_id != reported_winner_id:
+                # Opposing team is agreeing with the pending report — auto-confirm
+                ok, msg, _ = await TournamentManager.confirm_win(
+                    match_id=match_id,
+                    confirmer_discord=ctx.author_id,
+                )
+                if ok:
+                    await ctx.send("✅ Result confirmed!", ephemeral=True)
+                    await self._announce_next_match(match_id)
+                else:
+                    await ctx.send(msg, ephemeral=True)
+            else:
+                # Clash (both claim win) or same team re-reporting — do nothing
+                await ctx.send("A result is already pending confirmation for this match.", ephemeral=True)
+            return
 
         ok, msg = await TournamentManager.report_win(
             match_id=match_id,

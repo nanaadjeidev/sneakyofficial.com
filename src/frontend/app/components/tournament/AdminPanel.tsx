@@ -370,6 +370,10 @@ export function AdminMatchReporter({ onRefresh, flash }: {
   // matchId → gameNumber → stageName (local overrides shown after counterpick picks)
   const [gameStages, setGameStages] = useState<Record<number, Record<number, string | null>>>({});
   const [gameReporting, setGameReporting] = useState<string | null>(null); // "matchId-gameNum"
+  const [pendingGameReport, setPendingGameReport] = useState<{
+    matchId: number; gameNumber: number; winnerTeamId: number; winnerName: string;
+  } | null>(null);
+  const [revertingGame, setRevertingGame] = useState<string | null>(null); // "matchId-gameNum"
 
   const fetchMatches = useCallback(async () => {
     try {
@@ -481,6 +485,7 @@ export function AdminMatchReporter({ onRefresh, flash }: {
   const reportGame = async (matchId: number, gameNumber: number, winnerTeamId: number) => {
     const key = `${matchId}-${gameNumber}`;
     setGameReporting(key);
+    setPendingGameReport(null);
     try {
       const { data } = await axios.post(
         `${API_URL}/api/tournament/admin/report-game`,
@@ -493,6 +498,24 @@ export function AdminMatchReporter({ onRefresh, flash }: {
       flash("Failed to set game result.", false);
     } finally {
       setGameReporting(null);
+    }
+  };
+
+  const revertGame = async (matchId: number, gameNumber: number) => {
+    const key = `${matchId}-${gameNumber}`;
+    setRevertingGame(key);
+    try {
+      const { data } = await axios.post(
+        `${API_URL}/api/tournament/admin/game/revert`,
+        { match_id: matchId, game_number: gameNumber },
+        { withCredentials: true }
+      );
+      flash(data.message ?? "Game reverted.", data.ok ?? true);
+      if (data.ok) { await fetchMatches(); onRefresh(); }
+    } catch {
+      flash("Failed to revert game.", false);
+    } finally {
+      setRevertingGame(null);
     }
   };
 
@@ -598,21 +621,44 @@ export function AdminMatchReporter({ onRefresh, flash }: {
                               </select>
                             </div>
                             <div className="flex items-center gap-1 pl-28">
-                              <span className="text-[10px] text-slate-600 shrink-0">Winner:</span>
-                              <button
-                                onClick={() => m.team1 && reportGame(m.id, gm.game_number, m.team1.id)}
-                                disabled={gReporting || !m.team1}
-                                className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/40 text-blue-300 hover:bg-blue-900/60 disabled:opacity-40 truncate"
-                              >
-                                {m.team1?.name ?? "T1"}
-                              </button>
-                              <button
-                                onClick={() => m.team2 && reportGame(m.id, gm.game_number, m.team2.id)}
-                                disabled={gReporting || !m.team2}
-                                className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-900/30 border border-purple-700/40 text-purple-300 hover:bg-purple-900/60 disabled:opacity-40 truncate"
-                              >
-                                {m.team2?.name ?? "T2"}
-                              </button>
+                              {pendingGameReport?.matchId === m.id && pendingGameReport.gameNumber === gm.game_number ? (
+                                <>
+                                  <span className="text-[10px] text-amber-400 shrink-0">
+                                    Confirm: <strong>{pendingGameReport.winnerName}</strong> won G{gm.game_number}?
+                                  </span>
+                                  <button
+                                    onClick={() => reportGame(pendingGameReport.matchId, pendingGameReport.gameNumber, pendingGameReport.winnerTeamId)}
+                                    disabled={gReporting !== null}
+                                    className="text-[10px] px-2 py-0.5 rounded bg-green-900/40 border border-green-600/50 text-green-300 hover:bg-green-900/70 disabled:opacity-40"
+                                  >
+                                    Yes
+                                  </button>
+                                  <button
+                                    onClick={() => setPendingGameReport(null)}
+                                    className="text-[10px] px-1.5 py-0.5 rounded border border-slate-600/40 text-slate-400 hover:text-slate-200"
+                                  >
+                                    Cancel
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-[10px] text-slate-600 shrink-0">Winner:</span>
+                                  <button
+                                    onClick={() => m.team1 && setPendingGameReport({ matchId: m.id, gameNumber: gm.game_number, winnerTeamId: m.team1.id, winnerName: m.team1.name })}
+                                    disabled={gReporting !== null || !m.team1}
+                                    className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-blue-900/30 border border-blue-700/40 text-blue-300 hover:bg-blue-900/60 disabled:opacity-40 truncate"
+                                  >
+                                    {m.team1?.name ?? "T1"}
+                                  </button>
+                                  <button
+                                    onClick={() => m.team2 && setPendingGameReport({ matchId: m.id, gameNumber: gm.game_number, winnerTeamId: m.team2.id, winnerName: m.team2.name })}
+                                    disabled={gReporting !== null || !m.team2}
+                                    className="flex-1 text-[10px] px-1.5 py-0.5 rounded bg-purple-900/30 border border-purple-700/40 text-purple-300 hover:bg-purple-900/60 disabled:opacity-40 truncate"
+                                  >
+                                    {m.team2?.name ?? "T2"}
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         );
@@ -637,6 +683,22 @@ export function AdminMatchReporter({ onRefresh, flash }: {
                     {m.team2?.name ?? "Team 2"} wins
                   </button>
                 </div>
+                {(() => {
+                  const confirmedGames = sc[0] + sc[1];
+                  if (confirmedGames === 0) return null;
+                  const lastGame = confirmedGames;
+                  const rKey = `${m.id}-${lastGame}`;
+                  return (
+                    <button
+                      onClick={() => revertGame(m.id, lastGame)}
+                      disabled={revertingGame === rKey}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 text-[10px] px-2 py-1 rounded border border-slate-600/30 text-slate-500 hover:border-red-600/40 hover:text-red-300 transition-colors disabled:opacity-40"
+                    >
+                      <RotateCcw className="w-2.5 h-2.5" />
+                      {revertingGame === rKey ? "Reverting…" : `Revert last game (G${lastGame})`}
+                    </button>
+                  );
+                })()}
               </div>
             );
           })}
@@ -679,12 +741,29 @@ export function AdminMatchReporter({ onRefresh, flash }: {
                     </button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => setRevertConfirm(m.id)}
-                    className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded border border-slate-600/40 text-slate-400 hover:border-red-600/40 hover:text-red-300 transition-colors"
-                  >
-                    <RotateCcw className="w-3 h-3" /> Revert Series
-                  </button>
+                  <div className="flex flex-col gap-1">
+                    <button
+                      onClick={() => setRevertConfirm(m.id)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded border border-slate-600/40 text-slate-400 hover:border-red-600/40 hover:text-red-300 transition-colors"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Revert Series
+                    </button>
+                    {(() => {
+                      const total = (m.team1_games ?? 0) + (m.team2_games ?? 0);
+                      if (total === 0) return null;
+                      const rKey = `${m.id}-${total}`;
+                      return (
+                        <button
+                          onClick={() => revertGame(m.id, total)}
+                          disabled={revertingGame === rKey}
+                          className="w-full flex items-center justify-center gap-1.5 text-[10px] px-2 py-1 rounded border border-slate-600/30 text-slate-500 hover:border-amber-600/40 hover:text-amber-300 transition-colors disabled:opacity-40"
+                        >
+                          <RotateCcw className="w-2.5 h-2.5" />
+                          {revertingGame === rKey ? "Reverting…" : `Revert last game only (G${total})`}
+                        </button>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
             ))}
@@ -1780,6 +1859,8 @@ export function PlayerProfilesSection() {
   const [discordLookupLoading, setDiscordLookupLoading] = useState<Record<number, boolean>>({});
   const discordLookupTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
   const [winAdjusting, setWinAdjusting] = useState<Record<number, boolean>>({});
+  const [deleteConfirm, setDeleteConfirm] = useState<ProfileRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async (q?: string) => {
     setLoading(true);
@@ -1919,6 +2000,18 @@ export function PlayerProfilesSection() {
       }
     } finally {
       setWinAdjusting((prev) => { const n = { ...prev }; delete n[playerId]; return n; });
+    }
+  };
+
+  const deletePlayer = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await axios.delete(`${API_URL}/api/admin/player/${deleteConfirm.id}`, { withCredentials: true });
+      setProfiles((prev) => prev.filter((p) => p.id !== deleteConfirm.id));
+      setDeleteConfirm(null);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -2191,12 +2284,44 @@ export function PlayerProfilesSection() {
                           >+</button>
                         </div>
                       </td>
+                      <td className="px-3 py-2 text-right">
+                        <button
+                          onClick={() => setDeleteConfirm(p)}
+                          className="w-5 h-5 rounded bg-slate-700 hover:bg-red-900/70 text-slate-500 hover:text-red-400 flex items-center justify-center transition-colors"
+                          title="Delete player"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setDeleteConfirm(null)}>
+          <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 w-80 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-white mb-1">Delete player?</h3>
+            <p className="text-sm text-slate-400 mb-1">
+              This will permanently delete <span className="text-white font-medium">{deleteConfirm.display_name}</span> and all their stats.
+            </p>
+            <p className="text-xs text-red-400 mb-5">This cannot be undone.</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-1.5 rounded-lg text-sm bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+              >Cancel</button>
+              <button
+                onClick={deletePlayer}
+                disabled={deleting}
+                className="px-4 py-1.5 rounded-lg text-sm bg-red-700 hover:bg-red-600 text-white font-semibold disabled:opacity-50 transition-colors"
+              >{deleting ? "Deleting…" : "Delete"}</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

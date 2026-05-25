@@ -1307,16 +1307,19 @@ class TournamentManager:
                 series_winner_id = None
                 winner_name = None
 
+        # Per-game TrueSkill update — runs for every confirmed game
+        try:
+            await _get_profile_manager().update_trueskill_for_game(
+                match_id, game_number, winner_team_id
+            )
+        except Exception as e:
+            logger.warning("TrueSkill game update failed for match %s game %s: %s", match_id, game_number, e)
+
         if series_complete:
-            series_loser_id = team2_id if series_winner_id == team1_id else team1_id
-            winner_g = t1_wins if series_winner_id == team1_id else t2_wins
-            loser_g  = t2_wins if series_winner_id == team1_id else t1_wins
             try:
-                await _get_profile_manager().update_trueskill_for_match(
-                    match_id, series_winner_id, winner_games=winner_g, loser_games=loser_g
-                )
+                await _get_profile_manager().update_match_result(match_id, series_winner_id)
             except Exception as e:
-                logger.warning("TrueSkill update failed for match %s: %s", match_id, e)
+                logger.warning("Match result update failed for match %s: %s", match_id, e)
 
         from backend.util.broadcaster import TournamentBroadcaster
         if series_complete:
@@ -1877,7 +1880,7 @@ class TournamentManager:
             await cur.execute("UPDATE tournaments SET status = 'complete' WHERE id = %s", (tournament_id,))
 
         if winner_team_id:
-            await _get_profile_manager()._check_tournament_winner(tournament_id, winner_team_id, affects_rating=affects_rating)
+            await _get_profile_manager()._check_tournament_winner(tournament_id, winner_team_id, affects_rating=affects_rating, skip_remaining_check=True)
 
         from backend.util.broadcaster import TournamentBroadcaster
         await TournamentBroadcaster.get().broadcast({"event": "tournament_complete", "tournament_id": tournament_id})
@@ -1954,6 +1957,91 @@ class TournamentManager:
             "match_id": match_id,
         })
         return True, "Match reverted to pending. All game results and rating changes undone."
+
+    @staticmethod
+    async def admin_revert_game(match_id: int, game_number: int) -> tuple[bool, str]:
+        """Revert the last confirmed game of a match, undoing its TrueSkill update."""
+        async with DBContextManager() as cur:
+            await cur.execute(
+                "SELECT tournament_id, round, match_number, team1_id, team2_id, winner_id, status FROM tournament_matches WHERE id = %s",
+                (match_id,)
+            )
+            row = await cur.fetchone()
+            if not row:
+                return False, "Match not found."
+            tournament_id, rnd, match_num, team1_id, team2_id, winner_id, status = row
+
+            await _ensure_match_games_table(cur)
+            await cur.execute(
+                "SELECT MAX(game_number) FROM tournament_match_games WHERE match_id = %s AND status = 'confirmed'",
+                (match_id,)
+            )
+            last_row = await cur.fetchone()
+            last_game = last_row[0] if last_row else None
+            if last_game is None:
+                return False, "No confirmed games to revert."
+            if game_number != last_game:
+                return False, f"Can only revert the last confirmed game (Game {last_game})."
+
+            was_complete = status == "complete"
+
+            if was_complete and winner_id:
+                next_round = rnd + 1
+                next_match_num = (match_num + 1) // 2
+                slot = "team1_id" if match_num % 2 == 1 else "team2_id"
+                await cur.execute(
+                    "SELECT id, status FROM tournament_matches WHERE tournament_id = %s AND round = %s AND match_number = %s",
+                    (tournament_id, next_round, next_match_num)
+                )
+                next_match = await cur.fetchone()
+                if next_match:
+                    next_match_id, next_status = next_match
+                    if next_status == "complete":
+                        return False, "Cannot revert: the winner has already played and completed a further match. Revert that match first."
+                    await cur.execute(
+                        f"UPDATE tournament_matches SET {slot} = NULL, home_team_id = NULL, room_code = NULL WHERE id = %s",
+                        (next_match_id,)
+                    )
+
+            await cur.execute(
+                "DELETE FROM tournament_match_games WHERE match_id = %s AND game_number = %s",
+                (match_id, game_number)
+            )
+            await cur.execute(
+                "UPDATE tournament_matches SET status = 'pending', winner_id = NULL WHERE id = %s",
+                (match_id,)
+            )
+            if was_complete:
+                await cur.execute(
+                    "UPDATE tournaments SET status = 'active' WHERE id = %s AND status = 'complete'",
+                    (tournament_id,)
+                )
+
+            await cur.execute(
+                "SELECT winner_team_id FROM tournament_match_games WHERE match_id = %s AND status = 'confirmed'",
+                (match_id,)
+            )
+            results = await cur.fetchall()
+
+        t1_wins = sum(1 for r in results if r[0] == team1_id)
+        t2_wins = sum(1 for r in results if r[0] == team2_id)
+        TournamentManager.set_game_score(match_id, t1_wins, t2_wins)
+
+        try:
+            await _get_profile_manager().revert_trueskill_for_game(match_id, game_number)
+        except Exception as e:
+            logger.warning("TrueSkill game revert failed for match %s game %s: %s", match_id, game_number, e)
+
+        from backend.util.broadcaster import TournamentBroadcaster
+        await TournamentBroadcaster.get().broadcast({
+            "event": "game_reverted",
+            "tournament_id": tournament_id,
+            "match_id": match_id,
+            "game_number": game_number,
+            "team1_games": t1_wins,
+            "team2_games": t2_wins,
+        })
+        return True, f"Game {game_number} reverted. Score is now {t1_wins}–{t2_wins}."
 
     # ------------------------------------------------------------------ #
     #  Data retrieval                                                      #

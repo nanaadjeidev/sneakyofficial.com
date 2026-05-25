@@ -173,7 +173,7 @@ function useMatchData() {
             setMatch(prev => prev && prev.match_id === msg.match_id
               ? { ...prev, team1_games: msg.team1_games ?? 0, team2_games: msg.team2_games ?? 0, game_results: msg.game_results ?? prev.game_results }
               : prev);
-          } else if (msg.event === "counterpick_stage") {
+          } else if (msg.event === "counterpick_stage" || msg.event === "counterpick_set") {
             setMatch(prev => {
               if (!prev || prev.match_id !== msg.match_id) return prev;
               const games = prev.games.map(g => g.game_number === msg.game_number ? { ...g, stage_name: msg.stage_name } : g);

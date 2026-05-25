@@ -1,11 +1,14 @@
 """Twitch bot for tournament sign-ups, status, and stream fun."""
+import json
 import logging
+import os
 import random
 from typing import Optional
 
 from twitchio.ext import commands
 
 from backend.util.config import global_config
+from backend.util import overlay_settings as _ov
 from backend.tournament import TournamentManager
 
 logger = logging.getLogger("TwitchBot")
@@ -23,80 +26,16 @@ _GG_MESSAGES = [
     "🌙 Sneaky good plays! GGs!",
 ]
 
-_SPLATOON3_WEAPONS = [
-    # Shooters
-    "Splattershot Jr.", "Custom Splattershot Jr.", "Kensa Splattershot Jr.",
-    "Splattershot", "Tentatek Splattershot", "Hero Shot Replica",
-    "Splattershot Pro", "Forge Splattershot Pro", "Berry Splattershot Pro",
-    "52 Gal", "52 Gal Deco",
-    "96 Gal", "96 Gal Deco",
-    "Aerospray MG", "Aerospray RG",
-    "N-ZAP '85", "N-ZAP '89",
-    "Splash-o-matic", "Neo Splash-o-matic",
-    "Jet Squelcher", "Custom Jet Squelcher",
-    "L-3 Nozzlenose", "L-3 Nozzlenose D",
-    "H-3 Nozzlenose", "H-3 Nozzlenose D",
-    "Squeezer", "Foil Squeezer",
-    # Blasters
-    "Blaster", "Custom Blaster",
-    "Luna Blaster", "Luna Blaster Neo",
-    "Clash Blaster", "Clash Blaster Neo",
-    "Range Blaster", "Custom Range Blaster",
-    "Rapid Blaster", "Rapid Blaster Deco",
-    "Rapid Blaster Pro", "Rapid Blaster Pro Deco",
-    "S-BLAST '92", "S-BLAST '91",
-    # Rollers
-    "Carbon Roller", "Carbon Roller Deco",
-    "Splat Roller", "Krak-On Splat Roller", "Hero Roller Replica",
-    "Dynamo Roller", "Gold Dynamo Roller",
-    "Flingza Roller", "Foil Flingza Roller",
-    "Big Swig Roller", "Big Swig Roller Express",
-    # Brushes
-    "Inkbrush", "Inkbrush Nouveau",
-    "Octobrush", "Octobrush Nouveau",
-    "Painbrush", "Painbrush Nouveau",
-    # Chargers
-    "Splat Charger", "Firefin Splat Charger", "Hero Charger Replica",
-    "Splatterscope", "Firefin Splatterscope",
-    "Classic Squiffer", "New Squiffer",
-    "E-liter 4K", "Custom E-liter 4K",
-    "E-liter 4K Scope", "Custom E-liter 4K Scope",
-    "Bamboozler 14 Mk I", "Bamboozler 14 Mk II",
-    "Goo Tuber", "Custom Goo Tuber",
-    "Snipewriter 5H", "Snipewriter 5B",
-    # Sloshers
-    "Slosher", "Slosher Deco", "Hero Slosher Replica",
-    "Tri-Slosher", "Tri-Slosher Nouveau",
-    "Sloshing Machine", "Sloshing Machine Neo",
-    "Bloblobber", "Bloblobber Deco",
-    "Explosher", "Custom Explosher",
-    "Dread Wringer", "Dread Wringer D",
-    # Splatlings
-    "Mini Splatling", "Zink Mini Splatling",
-    "Heavy Splatling", "Heavy Splatling Deco", "Hero Splatling Replica",
-    "Hydra Splatling", "Custom Hydra Splatling",
-    "Ballpoint Splatling", "Ballpoint Splatling Nouveau",
-    "Nautilus 47", "Nautilus 79",
-    "Heavy Edit Splatling", "Heavy Edit Splatling Nouveau",
-    # Dualies
-    "Splat Dualies", "Enperry Splat Dualies", "Hero Dualie Replicas",
-    "Dualie Squelchers", "Custom Dualie Squelchers",
-    "Dark Tetra Dualies", "Light Tetra Dualies",
-    "Glooga Dualies", "Glooga Dualies Deco",
-    "Dapple Dualies", "Dapple Dualies Nouveau",
-    "Double Egg Splatters", "5-Star Splatters",
-    # Brellas
-    "Splat Brella", "Sorella Brella", "Hero Brella Replica",
-    "Tenta Brella", "Tenta Sorella Brella",
-    "Undercover Brella", "Undercover Sorella Brella",
-    "Recycled Brella 24 Mk I", "Recycled Brella 24 Mk II",
-    # Stringers
-    "Tri-Stringer", "Inkline Tri-Stringer",
-    "REEF-LUX 450", "REEF-LUX 450 Deco",
-    # Splatanas
-    "Splatana Stamper", "Splatana Stamper Nouveau",
-    "Splatana Wiper", "Splatana Wiper Deco",
-]
+def _load_s3_weapons() -> list[str]:
+    path = os.path.join(os.path.dirname(__file__), "..", "resources", "weapons.json")
+    with open(os.path.normpath(path), encoding="utf-8") as f:
+        data = json.load(f)
+    return [
+        w["name"] for w in data["weapons"]
+        if w.get("game") == "Splatoon 3" and "Grizzco" not in w["name"]
+    ]
+
+_SPLATOON3_WEAPONS: list[str] = _load_s3_weapons()
 
 _RANK_NAMES = {
     1: ("Starter Squid", "🦑"),
@@ -357,10 +296,23 @@ class TwitchBot(commands.Bot):
             f"| 💜 Discord: {global_config.discord_invite}"
         )
 
-    @commands.command(name="weapon", aliases=["randomweapon", "rweapon"])
+    @commands.command(name="weapon", aliases=["randomweapon", "rweapon", "rw"])
     async def cmd_weapon(self, ctx: commands.Context) -> None:
         weapon = random.choice(_SPLATOON3_WEAPONS)
         await ctx.send(f"🦑 @{ctx.author.name} your random weapon is: {weapon}!")
+
+    @commands.command(name="code")
+    async def cmd_code(self, ctx: commands.Context) -> None:
+        code = _ov.get().get("open_lobby_room_code")
+        if code:
+            await ctx.send(f"🏠 Room code: {code}")
+        else:
+            await ctx.send("🏠 (no code set at the moment)")
+
+    @commands.command(name="pool")
+    async def cmd_pool(self, ctx: commands.Context) -> None:
+        channel = _ov.get().get("weapon_pool_channel") or "sneakyn"
+        await ctx.send(f"🎯 Pool: {channel}")
 
     @commands.command(name="gg")
     async def cmd_gg(self, ctx: commands.Context) -> None:
