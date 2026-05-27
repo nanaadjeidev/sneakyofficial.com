@@ -400,7 +400,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
       return () => clearTimeout(t);
     }
     const ch = code[charIdx];
-    const delay = ch === "\n" ? 12 : ch === " " ? 3 : 5;
+    const delay = ch === "\n" ? 4 : 2;
     const t = setTimeout(() => setCharIdx(n => n + 1), delay);
     return () => clearTimeout(t);
   }, [phase, charIdx, code]);
