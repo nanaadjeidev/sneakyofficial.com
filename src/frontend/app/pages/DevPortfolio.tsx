@@ -378,7 +378,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
   const { code, lang, file } = SNIPPETS[sectionKey];
   const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
 
-  const { ref, visible } = useReveal(0.15);
+  const { ref, visible } = useReveal(0.35);
   const [phase, setPhase] = useState<RevealPhase>("idle");
   const [charIdx, setCharIdx] = useState(0);
   const triggered = useRef(false);
@@ -400,7 +400,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
       return () => clearTimeout(t);
     }
     const ch = code[charIdx];
-    const delay = ch === "\n" ? 35 : ch === " " ? 10 : 16;
+    const delay = ch === "\n" ? 12 : ch === " " ? 3 : 5;
     const t = setTimeout(() => setCharIdx(n => n + 1), delay);
     return () => clearTimeout(t);
   }, [phase, charIdx, code]);
