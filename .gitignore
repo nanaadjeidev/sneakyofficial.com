@@ -15,3 +15,8 @@ Thumbs.db
 .vscode/
 .idea/
 .env
+
+# AI tools
+.gemini/
+GEMINI.md
+graphify-out/
