@@ -2,7 +2,7 @@
  * Standalone developer portfolio with animated CV integration.
  * Route: /portfolio
  */
-import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react";
 import { Helmet } from "react-helmet";
 import {
   Github, Mail, MapPin, ExternalLink, Download,
@@ -178,10 +178,287 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
+// ── Code reveal animation ──────────────────────────────────────────────────────
+
+type Lang = "python" | "typescript" | "sql" | "cpp";
+type TK = "kw" | "type" | "str" | "comment" | "num" | "call" | "name" | "op" | "plain";
+
+const LANG_KW: Record<Lang, Set<string>> = {
+  python:     new Set(["def","return","for","in","from","import","class","if","else","elif","while","with","as","True","False","None","and","or","not","lambda"]),
+  typescript: new Set(["const","let","var","function","return","for","of","in","if","else","import","from","export","new","class","interface","type","async","await","true","false","null"]),
+  sql:        new Set(["SELECT","FROM","WHERE","ORDER","BY","INSERT","INTO","VALUES","AND","OR","NOT","AS","GROUP","HAVING","LIMIT","ASC","DESC","WITH","true","false"]),
+  cpp:        new Set(["auto","const","for","if","else","return","void","struct","namespace","using","public","private","template","typename","static","virtual","override"]),
+};
+
+const LANG_TYPES: Record<Lang, Set<string>> = {
+  python:     new Set(["list","dict","str","int","bool","float","Page","Skill","Card","Tag","Section"]),
+  typescript: new Set(["string","number","boolean","void","Project","Section","Card","Link"]),
+  sql:        new Set(["json_agg","row_to_json","json"]),
+  cpp:        new Set(["std","vector","Section","LeadershipItem","string"]),
+};
+
+function tokenize(src: string, lang: Lang): { t: TK; s: string }[] {
+  const kws   = LANG_KW[lang];
+  const types = LANG_TYPES[lang];
+  const out: { t: TK; s: string }[] = [];
+  const lineCommentChar = lang === "python" ? "#" : lang === "sql" ? "--" : "//";
+  let i = 0;
+
+  while (i < src.length) {
+    // Preprocessor / #include for cpp
+    if (lang === "cpp" && src[i] === "#") {
+      const end = src.indexOf("\n", i);
+      const s = end === -1 ? src.slice(i) : src.slice(i, end);
+      out.push({ t: "kw", s }); i += s.length; continue;
+    }
+    // Line comment
+    if (src.slice(i, i + lineCommentChar.length) === lineCommentChar) {
+      const end = src.indexOf("\n", i);
+      const s = end === -1 ? src.slice(i) : src.slice(i, end);
+      out.push({ t: "comment", s }); i += s.length; continue;
+    }
+    // String (single/double quote)
+    if (src[i] === '"' || src[i] === "'") {
+      const q = src[i]; let j = i + 1;
+      while (j < src.length && src[j] !== q && src[j] !== "\n") j++;
+      out.push({ t: "str", s: src.slice(i, j + 1) }); i = j + 1; continue;
+    }
+    // Word
+    if (/[A-Za-z_]/.test(src[i])) {
+      let j = i; while (j < src.length && /\w/.test(src[j])) j++;
+      const w = src.slice(i, j);
+      const isCall = src[j] === "(";
+      if (kws.has(w))   out.push({ t: "kw",   s: w });
+      else if (types.has(w)) out.push({ t: "type", s: w });
+      else if (isCall)  out.push({ t: "call",  s: w });
+      else              out.push({ t: "name",  s: w });
+      i = j; continue;
+    }
+    // Number
+    if (/\d/.test(src[i])) {
+      let j = i; while (j < src.length && /[\d.x]/.test(src[j])) j++;
+      out.push({ t: "num", s: src.slice(i, j) }); i = j; continue;
+    }
+    // Operator / punctuation
+    if (/[=():,.\[\]<>!*&|;{}]/.test(src[i])) {
+      out.push({ t: "op", s: src[i] }); i++; continue;
+    }
+    out.push({ t: "plain", s: src[i] }); i++;
+  }
+  return out;
+}
+
+const TK_COLOR: Record<TK, string> = {
+  kw:      "#c792ea",
+  type:    "#ffcb6b",
+  str:     "#c3e88d",
+  comment: "#546e7a",
+  num:     "#f78c6c",
+  call:    "#82aaff",
+  name:    "#eeffff",
+  op:      "#89ddff",
+  plain:   "#cdd6f4",
+};
+
+type SnippetDef = { code: string; lang: Lang; file: string };
+
+const SNIPPETS: Record<string, SnippetDef> = {
+  skills: {
+    lang: "python", file: "renderer.py",
+    code: `# portfolio/renderer.py
+from portfolio.skills import Skills
+from portfolio.types import (
+    Skill, Page, Card, Tag,
+)
+
+def render_skills(data: list[Skill]) -> Page:
+    page = Page(theme="dark", animate=True)
+
+    for skill in data:
+        card = Card(
+            title=skill.category,
+            icon=skill.icon,
+        )
+        for item in skill.items:
+            card.append(Tag(label=item))
+        page.append(card)
+
+    page.render()
+    return page
+
+skills = Skills.query(filter="active")
+section = render_skills(skills)
+section.mount(target="#skills")`,
+  },
+  projects: {
+    lang: "typescript", file: "projects.ts",
+    code: `// portfolio/projects.ts
+import { Project, Section, Card } from "./types";
+import { projects } from "./data";
+
+function renderProjects(data: Project[]): Section {
+  const section = new Section({ id: "projects" });
+
+  for (const project of data) {
+    const card = section.addCard({
+      title: project.title,
+      tags: project.tags,
+    });
+    if (project.url) card.addLink(project.url);
+    if (project.repoUrl) card.addRepo(project.repoUrl);
+  }
+
+  section.render();
+  return section;
+}
+
+renderProjects(projects);`,
+  },
+  education: {
+    lang: "sql", file: "education.sql",
+    code: `-- portfolio/education.sql
+SELECT
+    institution,
+    degree,
+    classification,
+    year_start,
+    year_end
+FROM education
+WHERE status = 'completed'
+    AND classification >= 'First Class'
+ORDER BY year_end DESC;
+
+INSERT INTO page_sections (id, content)
+SELECT 'education', json_agg(row_to_json(e))
+FROM education e
+WHERE e.active = true;`,
+  },
+  leadership: {
+    lang: "cpp", file: "leadership.cpp",
+    code: `// portfolio/leadership.cpp
+#include "portfolio/section.hpp"
+#include "portfolio/data.hpp"
+
+Section renderLeadership(
+    const std::vector<LeadershipItem>& items
+) {
+    Section section("leadership");
+
+    for (const auto& item : items) {
+        auto card = section.addCard(item.role);
+        card.setPeriod(item.period);
+        card.setDetail(item.detail);
+    }
+
+    section.render();
+    return section;
+}`,
+  },
+};
+
+function HighlightedCode({ tokens, limit }: { tokens: { t: TK; s: string }[]; limit: number }) {
+  let remaining = limit;
+  const spans: ReactNode[] = [];
+  for (let i = 0; i < tokens.length && remaining > 0; i++) {
+    const { t, s } = tokens[i];
+    const visible = s.slice(0, remaining);
+    remaining -= s.length;
+    spans.push(
+      <span key={i} style={{ color: TK_COLOR[t], fontStyle: t === "comment" ? "italic" : undefined }}>
+        {visible}
+      </span>
+    );
+  }
+  return <>{spans}</>;
+}
+
+type RevealPhase = "idle" | "typing" | "fading" | "done";
+
+function CodeRevealSection({ sectionKey, children }: { sectionKey: string; children: ReactNode }) {
+  const { code, lang, file } = SNIPPETS[sectionKey];
+  const tokens = useMemo(() => tokenize(code, lang), [code, lang]);
+
+  const { ref, visible } = useReveal(0.15);
+  const [phase, setPhase] = useState<RevealPhase>("idle");
+  const [charIdx, setCharIdx] = useState(0);
+  const triggered = useRef(false);
+
+  useEffect(() => {
+    if (visible && !triggered.current) {
+      triggered.current = true;
+      setPhase("typing");
+    }
+  }, [visible]);
+
+  useEffect(() => {
+    if (phase !== "typing") return;
+    if (charIdx >= code.length) {
+      const t = setTimeout(() => {
+        setPhase("fading");
+        setTimeout(() => setPhase("done"), 650);
+      }, 900);
+      return () => clearTimeout(t);
+    }
+    const ch = code[charIdx];
+    const delay = ch === "\n" ? 35 : ch === " " ? 10 : 16;
+    const t = setTimeout(() => setCharIdx(n => n + 1), delay);
+    return () => clearTimeout(t);
+  }, [phase, charIdx, code]);
+
+  if (phase === "done") {
+    return (
+      <div style={{ animation: "cvFadeIn 0.5s ease both" }}>
+        {children}
+      </div>
+    );
+  }
+
+  const lineCount = code.slice(0, charIdx).split("\n").length;
+
+  return (
+    <div ref={ref}>
+      <div
+        className="glass-card overflow-hidden"
+        style={{
+          opacity: phase === "fading" ? 0 : 1,
+          transform: phase === "fading" ? "translateY(-14px)" : "translateY(0)",
+          transition: "opacity 0.6s ease, transform 0.6s cubic-bezier(0.22,1,0.36,1)",
+        }}
+      >
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/10" style={{ background: "rgba(255,255,255,0.03)" }}>
+          <div className="flex gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,95,87,0.7)" }} />
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(255,188,46,0.7)" }} />
+            <span className="w-2.5 h-2.5 rounded-full" style={{ background: "rgba(40,201,64,0.6)" }} />
+          </div>
+          <span className="text-slate-500 text-xs font-mono ml-2">{file}</span>
+        </div>
+        <div className="flex text-xs font-mono leading-6" style={{ minHeight: "18rem" }}>
+          <div
+            className="select-none text-right pr-3 pl-3 py-4 border-r border-white/8"
+            style={{ minWidth: "2.8rem", color: "#3d4c5e", background: "rgba(255,255,255,0.015)" }}
+          >
+            {Array.from({ length: lineCount }, (_, idx) => (
+              <div key={idx}>{idx + 1}</div>
+            ))}
+          </div>
+          <pre
+            className="flex-1 px-5 py-4 m-0 overflow-auto whitespace-pre"
+            style={{ background: "transparent", color: "#cdd6f4" }}
+          >
+            <HighlightedCode tokens={tokens} limit={charIdx} />
+            {phase === "typing" && <span className="animate-pulse" style={{ color: "#4ade80" }}>▌</span>}
+          </pre>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Terminal hero ──────────────────────────────────────────────────────────────
 
 function TerminalHero() {
-  const line1 = useTypewriter("nana.adjei.dev", 80, 300);
+  const line1 = useTypewriter("Nana Adjei", 80, 300);
   const line2 = useTypewriter("C++ / Python / TypeScript", 48, 1700);
   const line3 = useTypewriter("Backend & Full-Stack Engineer", 42, 3000);
 
@@ -322,7 +599,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
               {EXPERIENCE.map((exp) => (
                 <div key={exp.company}>
                   <div className="flex justify-between items-baseline mb-1.5">
-                    <span className="font-semibold text-white text-sm">{exp.company} — <span className="font-normal text-slate-300">{exp.role}</span></span>
+                    <span className="font-semibold text-white text-sm">{exp.company}<span className="font-normal text-slate-400">, </span><span className="font-normal text-slate-300">{exp.role}</span></span>
                     <span className="text-slate-500 text-xs flex-shrink-0 ml-2">{exp.period}</span>
                   </div>
                   <ul className="space-y-1">
@@ -586,37 +863,43 @@ const DevPortfolio = () => {
           </FadeSection>
 
           {/* ── Skills ── */}
-          <FadeSection>
+          <CodeRevealSection sectionKey="skills">
             <SectionLabel>Skills</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {SKILLS.map(({ category, Icon, items }, groupIdx) => (
-                <SlideItem key={category} delay={groupIdx * 70}>
-                  <div className="glass-card card-lift p-5 h-full">
-                    <div className="flex items-center gap-2 mb-3.5">
-                      <Icon className="w-4 h-4 text-green-400" />
-                      <h3 className="text-sm font-semibold text-white">{category}</h3>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {items.map((item, i) => (
-                        <span
-                          key={item}
-                          className="text-xs px-2.5 py-1 rounded-md bg-white/7 border border-white/12 text-slate-300"
-                          style={{
-                            opacity: 0,
-                            animation: `tagPop 0.3s cubic-bezier(0.22,1,0.36,1) ${i * 55 + groupIdx * 60 + 150}ms forwards`,
-                          }}
-                        >
-                          {item}
-                        </span>
-                      ))}
-                    </div>
+                <div
+                  key={category}
+                  className="glass-card card-lift p-5 h-full"
+                  style={{
+                    opacity: 0,
+                    animation: `tagPop 0.4s cubic-bezier(0.22,1,0.36,1) ${groupIdx * 80 + 80}ms forwards`,
+                  }}
+                >
+                  <div className="flex items-center gap-2 mb-3.5">
+                    <Icon className="w-4 h-4 text-green-400" />
+                    <h3 className="text-sm font-semibold text-white">{category}</h3>
                   </div>
-                </SlideItem>
+                  <div className="flex flex-wrap gap-2">
+                    {items.map((item, i) => (
+                      <span
+                        key={item}
+                        className="text-xs px-2.5 py-1 rounded-md bg-white/7 border border-white/12 text-slate-300"
+                        style={{
+                          opacity: 0,
+                          animation: `tagPop 0.3s cubic-bezier(0.22,1,0.36,1) ${i * 55 + groupIdx * 60 + 250}ms forwards`,
+                        }}
+                      >
+                        {item}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
-          </FadeSection>
+          </CodeRevealSection>
 
           {/* ── Projects ── */}
+          <CodeRevealSection sectionKey="projects">
           <FadeSection>
             <SectionLabel>Projects</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -669,8 +952,10 @@ const DevPortfolio = () => {
               ))}
             </div>
           </FadeSection>
+          </CodeRevealSection>
 
           {/* ── Education ── */}
+          <CodeRevealSection sectionKey="education">
           <FadeSection>
             <SectionLabel>Education</SectionLabel>
             <SlideItem>
@@ -678,7 +963,7 @@ const DevPortfolio = () => {
                 <div className="flex flex-wrap justify-between items-start gap-2 mb-3">
                   <div>
                     <h3 className="text-sm font-semibold text-white">University of Portsmouth</h3>
-                    <p className="text-green-400 text-sm mt-0.5">BSc (Hons) Software Engineering — First Class</p>
+                    <p className="text-green-400 text-sm mt-0.5">BSc (Hons) Software Engineering, First Class</p>
                   </div>
                   <span className="text-xs text-slate-500 font-mono bg-white/5 px-2.5 py-1 rounded-lg border border-white/8">
                     2022 – 2026
@@ -700,8 +985,10 @@ const DevPortfolio = () => {
               </div>
             </SlideItem>
           </FadeSection>
+          </CodeRevealSection>
 
           {/* ── Leadership ── */}
+          <CodeRevealSection sectionKey="leadership">
           <FadeSection>
             <SectionLabel>Leadership & Responsibility</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -721,6 +1008,7 @@ const DevPortfolio = () => {
               ))}
             </div>
           </FadeSection>
+          </CodeRevealSection>
 
           {/* ── Contact ── */}
           <FadeSection>
