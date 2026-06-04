@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Standalone developer portfolio with animated CV integration.
  * Route: /portfolio
  */
@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Background from "../components/Background";
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type Experience = {
   company: string;
@@ -28,15 +28,15 @@ type Project = {
   tags: string[];
 };
 
-// ── CV Data ────────────────────────────────────────────────────────────────────
+// â”€â”€ CV Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const EXPERIENCE: Experience[] = [
   {
     company: "MarineAI",
     role: "Software Engineer Intern",
-    period: "Sep 2024 – Sep 2025",
+    period: "Sep 2024 â€“ Sep 2025",
     bullets: [
-      "Designed and implemented a testing framework for their Python communication library — cut code needed per message type from 400–500 lines to ~80 lines via abstraction and object manipulation.",
+      "Designed and implemented a testing framework for their Python communication library â€” cut code needed per message type from 400â€“500 lines to ~80 lines via abstraction and object manipulation.",
       "Contributed to the autonomous navigation stack: route-optimisation algorithms and real-time sensor-fusion modules reducing contextualised routes across weather patterns.",
       "Designed and implemented a C++ alarms library from scratch, now the sole fault-detection and alerting layer across all MarineAI C++ production applications, replacing ad-hoc error handling that caused undetected sensor faults.",
       "Delivered production code under safety-critical constraints (functional-safety review, mandatory code gates, full documentation) targeting Serco-operated vessels on live autonomous maritime operations.",
@@ -45,9 +45,9 @@ const EXPERIENCE: Experience[] = [
   {
     company: "Self-Employed",
     role: "Freelance Software Engineer",
-    period: "Jul 2024 – Present",
+    period: "Jul 2024 â€“ Present",
     bullets: [
-      "Developed OCE-4Mans — a React and Python platform to organise private Rocket League matches, featuring scheduling, scoring, and real-time competition workflows.",
+      "Developed OCE-4Mans â€” a React and Python platform to organise private Rocket League matches, featuring scheduling, scoring, and real-time competition workflows.",
       "Designed and delivered client web applications in React and Tailwind, iterating rapidly on live systems in response to user feedback.",
       "Contributed TypeScript modules to an open-source Discord Bot serving tens of thousands of communities and hundreds of thousands of users.",
     ],
@@ -65,8 +65,8 @@ const SKILLS = [
 const PROJECTS: Project[] = [
   {
     title: "Esports Uni Hub",
-    subtitle: "Final Year Project · University of Portsmouth",
-    description: "Full-stack esports society management platform. Grew from zero to 90+ active users across 13 UK universities in under six months. Drove adoption through direct user research and individual society onboarding — not organic discovery.",
+    subtitle: "Final Year Project Â· University of Portsmouth",
+    description: "Full-stack esports society management platform. Grew from zero to 90+ active users across 13 UK universities in under six months. Drove adoption through direct user research and individual society onboarding â€” not organic discovery.",
     url: "https://esportsunihub.com",
     tags: ["React", "TypeScript", "Full-Stack", "Community Platform"],
   },
@@ -77,25 +77,25 @@ const PROJECTS: Project[] = [
   },
   {
     title: "OCE 4 Mans",
-    description: "Full-stack matchmaking platform for the Rocket League OCE community. Handles rank tracking, structured queuing, Discord integration, and player history — built from scratch.",
+    description: "Full-stack matchmaking platform for the Rocket League OCE community. Handles rank tracking, structured queuing, Discord integration, and player history â€” built from scratch.",
     tags: ["TypeScript", "React", "Python", "Discord API"],
   },
   {
     title: "Pet Ascension",
-    description: "Browser game that earned the highest mark in the cohort for Application Programming. Built with Express.js and vanilla JS/HTML/CSS — deliberately no frameworks.",
+    description: "Browser game that earned the highest mark in the cohort for Application Programming. Built with Express.js and vanilla JS/HTML/CSS â€” deliberately no frameworks.",
     repoUrl: "https://github.com/Sneakynarnar/Pet-Ascension",
     tags: ["JavaScript", "Express.js", "HTML/CSS"],
   },
 ];
 
 const LEADERSHIP = [
-  { role: "Student Groups Admin, UPSU",         period: "2025 – present", detail: "Managed operations, event planning, and compliance across societies." },
+  { role: "Student Groups Admin, UPSU",         period: "2025 â€“ present", detail: "Managed operations, event planning, and compliance across societies." },
   { role: "Student Leaders Development Assistant", period: "2025",         detail: "Delivered training programmes for student representatives." },
-  { role: "Student Voice Assistant",             period: "2023 – 2024",   detail: "Facilitated communication between students and faculty." },
-  { role: "Faculty Representative",              period: "2022 – 2023",   detail: "Represented students in university leadership meetings." },
+  { role: "Student Voice Assistant",             period: "2023 â€“ 2024",   detail: "Facilitated communication between students and faculty." },
+  { role: "Faculty Representative",              period: "2022 â€“ 2023",   detail: "Represented students in university leadership meetings." },
 ];
 
-// ── Hooks ──────────────────────────────────────────────────────────────────────
+// â”€â”€ Hooks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function useReveal(threshold = 0.1) {
   const ref = useRef<HTMLDivElement>(null);
@@ -133,7 +133,7 @@ function useTypewriter(text: string, speed = 55, startDelay = 0) {
   return { displayed, done };
 }
 
-// ── Animation helpers ──────────────────────────────────────────────────────────
+// â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function FadeSection({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
   const { ref, visible } = useReveal();
@@ -178,7 +178,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-// ── Code reveal animation ──────────────────────────────────────────────────────
+// â”€â”€ Code reveal animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type Lang = "python" | "typescript" | "sql" | "cpp";
 type TK = "kw" | "type" | "str" | "comment" | "num" | "call" | "name" | "op" | "plain";
@@ -447,7 +447,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
             style={{ background: "transparent", color: "#cdd6f4" }}
           >
             <HighlightedCode tokens={tokens} limit={charIdx} />
-            {phase === "typing" && <span className="animate-pulse" style={{ color: "#4ade80" }}>▌</span>}
+            {phase === "typing" && <span className="animate-pulse" style={{ color: "#4ade80" }}>â–Œ</span>}
           </pre>
         </div>
       </div>
@@ -455,7 +455,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
   );
 }
 
-// ── Terminal hero ──────────────────────────────────────────────────────────────
+// â”€â”€ Terminal hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function TerminalHero() {
   const line1 = useTypewriter("Nana Adjei", 80, 300);
@@ -472,29 +472,29 @@ function TerminalHero() {
       <div className="pl-4 space-y-2">
         <div className="text-green-300 text-2xl sm:text-3xl font-bold tracking-tight">
           {line1.displayed}
-          {!line1.done && <span className="animate-pulse">▌</span>}
+          {!line1.done && <span className="animate-pulse">â–Œ</span>}
         </div>
         <div className="text-slate-200 text-base sm:text-lg">
           {line2.displayed}
-          {line1.done && !line2.done && <span className="animate-pulse">▌</span>}
+          {line1.done && !line2.done && <span className="animate-pulse">â–Œ</span>}
         </div>
         <div className="text-slate-400 text-sm sm:text-base">
           {line3.displayed}
-          {line2.done && !line3.done && <span className="animate-pulse">▌</span>}
+          {line2.done && !line3.done && <span className="animate-pulse">â–Œ</span>}
         </div>
       </div>
       {line3.done && (
         <div className="text-slate-600 text-sm mt-5 font-mono">
           <span className="text-green-400">~</span>
           <span className="text-slate-400"> $ </span>
-          <span className="animate-pulse text-white/60">▌</span>
+          <span className="animate-pulse text-white/60">â–Œ</span>
         </div>
       )}
     </div>
   );
 }
 
-// ── Stats bar ──────────────────────────────────────────────────────────────────
+// â”€â”€ Stats bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function AnimatedCount({ target, suffix = "" }: { target: number; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -519,7 +519,7 @@ function AnimatedCount({ target, suffix = "" }: { target: number; suffix?: strin
   );
 }
 
-// ── CV Modal ───────────────────────────────────────────────────────────────────
+// â”€â”€ CV Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function CVModal({ onClose }: { onClose: () => void }) {
   const handlePrint = useCallback(() => window.print(), []);
@@ -588,7 +588,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-2">Summary</p>
             <p className="text-slate-400">
-              Software engineer with production experience, shipping code in professional environments. At MarineAI, designed core C++ infrastructure now deployed across all production C++ applications. Built and launched full-stack platforms used live by students at 13 UK universities. Looking for a backend role. Writes Python, C++, and TypeScript — comfortable picking up whatever the stack needs.
+              Software engineer with production experience, shipping code in professional environments. At MarineAI, designed core C++ infrastructure now deployed across all production C++ applications. Built and launched full-stack platforms used live by students at 13 UK universities. Looking for a backend role. Writes Python, C++, and TypeScript â€” comfortable picking up whatever the stack needs.
             </p>
           </div>
 
@@ -605,7 +605,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
                   <ul className="space-y-1">
                     {exp.bullets.map((b, i) => (
                       <li key={i} className="flex gap-2 text-slate-400 text-xs">
-                        <span className="text-green-500/60 flex-shrink-0 mt-0.5">•</span>
+                        <span className="text-green-500/60 flex-shrink-0 mt-0.5">â€¢</span>
                         {b}
                       </li>
                     ))}
@@ -631,13 +631,13 @@ function CVModal({ onClose }: { onClose: () => void }) {
             <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-2">Education</p>
             <div className="flex justify-between items-baseline mb-1">
               <span className="font-semibold text-white text-sm">University of Portsmouth</span>
-              <span className="text-slate-500 text-xs">2022 – 2026</span>
+              <span className="text-slate-500 text-xs">2022 â€“ 2026</span>
             </div>
             <p className="text-slate-400 text-xs mb-1">BSc (Hons) Software Engineering, First Class</p>
             <ul className="space-y-0.5 text-xs text-slate-500">
-              <li>• Highest mark in cohort for Application Programming</li>
-              <li>• A Levels: Computer Science (A*), Mathematics (B), Physics (B)</li>
-              <li>• GCSEs: 10 grades 9–5, including Maths, Physics, and Computer Science</li>
+              <li>â€¢ Highest mark in cohort for Application Programming</li>
+              <li>â€¢ A Levels: Computer Science (A*), Mathematics (B), Physics (B)</li>
+              <li>â€¢ GCSEs: 10 grades 9â€“5, including Maths, Physics, and Computer Science</li>
             </ul>
           </div>
 
@@ -647,7 +647,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-2">
               {PROJECTS.map((p) => (
                 <div key={p.title} className="flex gap-2 text-xs">
-                  <span className="text-green-500/60 flex-shrink-0 mt-0.5">›</span>
+                  <span className="text-green-500/60 flex-shrink-0 mt-0.5">â€º</span>
                   <div>
                     <span className="font-medium text-white">{p.title}</span>
                     {p.url && <span className="text-slate-500 ml-2">{p.url}</span>}
@@ -676,7 +676,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// ── Main component ─────────────────────────────────────────────────────────────
+// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const DevPortfolio = () => {
   const [cvOpen, setCvOpen] = useState(false);
@@ -684,7 +684,7 @@ const DevPortfolio = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-black text-white">
       <Helmet>
-        <title>Nana Adjei — Software Engineer</title>
+        <title>Nana Adjei â€” Software Engineer</title>
         <meta
           name="description"
           content="Software engineering portfolio of Nana Adjei. C++ / Python / TypeScript backend & full-stack engineer based in London."
@@ -748,7 +748,7 @@ const DevPortfolio = () => {
 
       <div className="relative z-10">
 
-        {/* ── Hero ────────────────────────────────────────────────────────────── */}
+        {/* â”€â”€ Hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <header className="max-w-4xl mx-auto px-6 pt-20 pb-14 cv-hero">
           <div className="glass-card p-8 sm:p-10">
             <TerminalHero />
@@ -780,7 +780,7 @@ const DevPortfolio = () => {
 
         <div className="max-w-4xl mx-auto px-6 pb-28 space-y-18">
 
-          {/* ── Stats ── */}
+          {/* â”€â”€ Stats â”€â”€ */}
           <FadeSection className="max-w-4xl">
             <div className="grid grid-cols-3 gap-3">
               {[
@@ -801,7 +801,7 @@ const DevPortfolio = () => {
             </div>
           </FadeSection>
 
-          {/* ── Summary ── */}
+          {/* â”€â”€ Summary â”€â”€ */}
           <FadeSection>
             <SectionLabel>Summary</SectionLabel>
             <SlideItem>
@@ -811,13 +811,13 @@ const DevPortfolio = () => {
                 <span className="text-white font-medium">all production C++ applications</span>.
                 Alongside that, I've built and launched full-stack platforms used live by students at{" "}
                 <span className="text-green-300 font-medium">13 UK universities</span>.
-                I'm looking for a backend role where I can grow fast — I write Python, C++, and TypeScript,
+                I'm looking for a backend role where I can grow fast â€” I write Python, C++, and TypeScript,
                 and I'm comfortable picking up whatever the stack needs.
               </div>
             </SlideItem>
           </FadeSection>
 
-          {/* ── Experience ── */}
+          {/* â”€â”€ Experience â”€â”€ */}
           <FadeSection>
             <SectionLabel>Experience</SectionLabel>
             <div className="relative">
@@ -849,7 +849,7 @@ const DevPortfolio = () => {
                               className="flex gap-2.5 text-sm text-slate-400 leading-relaxed"
                               style={{ opacity: 0, animation: `cvFadeIn 0.4s ease ${j * 90 + 300}ms forwards` }}
                             >
-                              <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">›</span>
+                              <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">â€º</span>
                               {bullet}
                             </li>
                           ))}
@@ -862,7 +862,7 @@ const DevPortfolio = () => {
             </div>
           </FadeSection>
 
-          {/* ── Skills ── */}
+          {/* â”€â”€ Skills â”€â”€ */}
           <CodeRevealSection sectionKey="skills">
             <SectionLabel>Skills</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -898,7 +898,7 @@ const DevPortfolio = () => {
             </div>
           </CodeRevealSection>
 
-          {/* ── Projects ── */}
+          {/* â”€â”€ Projects â”€â”€ */}
           <CodeRevealSection sectionKey="projects">
           <FadeSection>
             <SectionLabel>Projects</SectionLabel>
@@ -954,7 +954,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* ── Education ── */}
+          {/* â”€â”€ Education â”€â”€ */}
           <CodeRevealSection sectionKey="education">
           <FadeSection>
             <SectionLabel>Education</SectionLabel>
@@ -966,7 +966,7 @@ const DevPortfolio = () => {
                     <p className="text-green-400 text-sm mt-0.5">BSc (Hons) Software Engineering, First Class</p>
                   </div>
                   <span className="text-xs text-slate-500 font-mono bg-white/5 px-2.5 py-1 rounded-lg border border-white/8">
-                    2022 – 2026
+                    2022 â€“ 2026
                   </span>
                 </div>
                 <ul className="space-y-2">
@@ -974,10 +974,10 @@ const DevPortfolio = () => {
                     "Highest mark in cohort for Application Programming",
                     "Relevant modules: Software Engineering Culture, Databases, AI, Web Programming",
                     "A Levels: Computer Science (A*), Mathematics (B), Physics (B)",
-                    "GCSEs: 10 grades 9–5, including Maths, Physics, and Computer Science",
+                    "GCSEs: 10 grades 9â€“5, including Maths, Physics, and Computer Science",
                   ].map((item, i) => (
                     <li key={i} className="flex gap-2.5 text-sm text-slate-400">
-                      <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">›</span>
+                      <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">â€º</span>
                       {item}
                     </li>
                   ))}
@@ -987,7 +987,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* ── Leadership ── */}
+          {/* â”€â”€ Leadership â”€â”€ */}
           <CodeRevealSection sectionKey="leadership">
           <FadeSection>
             <SectionLabel>Leadership & Responsibility</SectionLabel>
@@ -1010,7 +1010,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* ── Contact ── */}
+          {/* â”€â”€ Contact â”€â”€ */}
           <FadeSection>
             <SectionLabel>Get in touch</SectionLabel>
             <SlideItem>
@@ -1048,3 +1048,4 @@ const DevPortfolio = () => {
 };
 
 export default DevPortfolio;
+
