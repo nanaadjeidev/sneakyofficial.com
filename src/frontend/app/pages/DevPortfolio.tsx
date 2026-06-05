@@ -36,7 +36,7 @@ const EXPERIENCE: Experience[] = [
     role: "Software Engineer Intern",
     period: "Sep 2024 â€“ Sep 2025",
     bullets: [
-      "Designed and implemented a testing framework for their Python communication library â€” cut code needed per message type from 400â€“500 lines to ~80 lines via abstraction and object manipulation.",
+      "Designed and implemented a testing framework for their Python communication library — cut code needed per message type from 400â€“500 lines to ~80 lines via abstraction and object manipulation.",
       "Contributed to the autonomous navigation stack: route-optimisation algorithms and real-time sensor-fusion modules reducing contextualised routes across weather patterns.",
       "Designed and implemented a C++ alarms library from scratch, now the sole fault-detection and alerting layer across all MarineAI C++ production applications, replacing ad-hoc error handling that caused undetected sensor faults.",
       "Delivered production code under safety-critical constraints (functional-safety review, mandatory code gates, full documentation) targeting Serco-operated vessels on live autonomous maritime operations.",
@@ -47,7 +47,7 @@ const EXPERIENCE: Experience[] = [
     role: "Freelance Software Engineer",
     period: "Jul 2024 â€“ Present",
     bullets: [
-      "Developed OCE-4Mans â€” a React and Python platform to organise private Rocket League matches, featuring scheduling, scoring, and real-time competition workflows.",
+      "Developed OCE-4Mans — a React and Python platform to organise private Rocket League matches, featuring scheduling, scoring, and real-time competition workflows.",
       "Designed and delivered client web applications in React and Tailwind, iterating rapidly on live systems in response to user feedback.",
       "Contributed TypeScript modules to an open-source Discord Bot serving tens of thousands of communities and hundreds of thousands of users.",
     ],
@@ -66,7 +66,7 @@ const PROJECTS: Project[] = [
   {
     title: "Esports Uni Hub",
     subtitle: "Final Year Project Â· University of Portsmouth",
-    description: "Full-stack esports society management platform. Grew from zero to 90+ active users across 13 UK universities in under six months. Drove adoption through direct user research and individual society onboarding â€” not organic discovery.",
+    description: "Full-stack esports society management platform. Grew from zero to 90+ active users across 13 UK universities in under six months. Drove adoption through direct user research and individual society onboarding — not organic discovery.",
     url: "https://esportsunihub.com",
     tags: ["React", "TypeScript", "Full-Stack", "Community Platform"],
   },
@@ -77,12 +77,12 @@ const PROJECTS: Project[] = [
   },
   {
     title: "OCE 4 Mans",
-    description: "Full-stack matchmaking platform for the Rocket League OCE community. Handles rank tracking, structured queuing, Discord integration, and player history â€” built from scratch.",
+    description: "Full-stack matchmaking platform for the Rocket League OCE community. Handles rank tracking, structured queuing, Discord integration, and player history — built from scratch.",
     tags: ["TypeScript", "React", "Python", "Discord API"],
   },
   {
     title: "Pet Ascension",
-    description: "Browser game that earned the highest mark in the cohort for Application Programming. Built with Express.js and vanilla JS/HTML/CSS â€” deliberately no frameworks.",
+    description: "Browser game that earned the highest mark in the cohort for Application Programming. Built with Express.js and vanilla JS/HTML/CSS — deliberately no frameworks.",
     repoUrl: "https://github.com/Sneakynarnar/Pet-Ascension",
     tags: ["JavaScript", "Express.js", "HTML/CSS"],
   },
@@ -588,7 +588,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-2">Summary</p>
             <p className="text-slate-400">
-              Software engineer with production experience, shipping code in professional environments. At MarineAI, designed core C++ infrastructure now deployed across all production C++ applications. Built and launched full-stack platforms used live by students at 13 UK universities. Looking for a backend role. Writes Python, C++, and TypeScript â€” comfortable picking up whatever the stack needs.
+              Software engineer with production experience, shipping code in professional environments. At MarineAI, designed core C++ infrastructure now deployed across all production C++ applications. Built and launched full-stack platforms used live by students at 13 UK universities. Looking for a backend role. Writes Python, C++, and TypeScript — comfortable picking up whatever the stack needs.
             </p>
           </div>
 
@@ -684,7 +684,7 @@ const DevPortfolio = () => {
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-black text-white">
       <Helmet>
-        <title>Nana Adjei â€” Software Engineer</title>
+        <title>Nana Adjei | Software Engineer</title>
         <meta
           name="description"
           content="Software engineering portfolio of Nana Adjei. C++ / Python / TypeScript backend & full-stack engineer based in London."
@@ -811,7 +811,7 @@ const DevPortfolio = () => {
                 <span className="text-white font-medium">all production C++ applications</span>.
                 Alongside that, I've built and launched full-stack platforms used live by students at{" "}
                 <span className="text-green-300 font-medium">13 UK universities</span>.
-                I'm looking for a backend role where I can grow fast â€” I write Python, C++, and TypeScript,
+                I'm looking for a backend role where I can grow fast — I write Python, C++, and TypeScript,
                 and I'm comfortable picking up whatever the stack needs.
               </div>
             </SlideItem>
