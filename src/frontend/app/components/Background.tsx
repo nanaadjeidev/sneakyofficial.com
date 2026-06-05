@@ -329,6 +329,7 @@ function BackgroundContent({ buildChainRef }: { buildChainRef: React.RefObject<(
   // ── Auto chains ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const fire = () => {
+      if (document.hidden) return;
       const pts = particlesRef.current;
       if (!pts.length) return;
       const rand = pts[Math.floor(Math.random() * pts.length)];
