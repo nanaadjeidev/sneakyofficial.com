@@ -447,7 +447,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
             style={{ background: "transparent", color: "#cdd6f4" }}
           >
             <HighlightedCode tokens={tokens} limit={charIdx} />
-            {phase === "typing" && <span className="animate-pulse" style={{ color: "#4ade80" }}>â–Œ</span>}
+            {phase === "typing" && <span className="animate-pulse" style={{ color: "#4ade80" }}>▌</span>}
           </pre>
         </div>
       </div>
@@ -472,22 +472,22 @@ function TerminalHero() {
       <div className="pl-4 space-y-2">
         <div className="text-green-300 text-2xl sm:text-3xl font-bold tracking-tight">
           {line1.displayed}
-          {!line1.done && <span className="animate-pulse">â–Œ</span>}
+          {!line1.done && <span className="animate-pulse">▌</span>}
         </div>
         <div className="text-slate-200 text-base sm:text-lg">
           {line2.displayed}
-          {line1.done && !line2.done && <span className="animate-pulse">â–Œ</span>}
+          {line1.done && !line2.done && <span className="animate-pulse">▌</span>}
         </div>
         <div className="text-slate-400 text-sm sm:text-base">
           {line3.displayed}
-          {line2.done && !line3.done && <span className="animate-pulse">â–Œ</span>}
+          {line2.done && !line3.done && <span className="animate-pulse">▌</span>}
         </div>
       </div>
       {line3.done && (
         <div className="text-slate-600 text-sm mt-5 font-mono">
           <span className="text-green-400">~</span>
           <span className="text-slate-400"> $ </span>
-          <span className="animate-pulse text-white/60">â–Œ</span>
+          <span className="animate-pulse text-white/60">▌</span>
         </div>
       )}
     </div>
