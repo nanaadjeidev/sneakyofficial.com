@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Background from "../components/Background";
 
-// â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Types ──────────────────────────────────────────────────────────────────────
 
 type Experience = {
   company: string;
@@ -28,15 +28,15 @@ type Project = {
   tags: string[];
 };
 
-// â”€â”€ CV Data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CV Data ────────────────────────────────────────────────────────────────────
 
 const EXPERIENCE: Experience[] = [
   {
     company: "MarineAI",
     role: "Software Engineer Intern",
-    period: "Sep 2024 â€“ Sep 2025",
+    period: "Sep 2024 – Sep 2025",
     bullets: [
-      "Designed and implemented a testing framework for their Python communication library — cut code needed per message type from 400â€“500 lines to ~80 lines via abstraction and object manipulation.",
+      "Designed and implemented a testing framework for their Python communication library — cut code needed per message type from 400–500 lines to ~80 lines via abstraction and object manipulation.",
       "Contributed to the autonomous navigation stack: route-optimisation algorithms and real-time sensor-fusion modules reducing contextualised routes across weather patterns.",
       "Designed and implemented a C++ alarms library from scratch, now the sole fault-detection and alerting layer across all MarineAI C++ production applications, replacing ad-hoc error handling that caused undetected sensor faults.",
       "Delivered production code under safety-critical constraints (functional-safety review, mandatory code gates, full documentation) targeting Serco-operated vessels on live autonomous maritime operations.",
@@ -45,7 +45,7 @@ const EXPERIENCE: Experience[] = [
   {
     company: "Self-Employed",
     role: "Freelance Software Engineer",
-    period: "Jul 2024 â€“ Present",
+    period: "Jul 2024 – Present",
     bullets: [
       "Developed OCE-4Mans — a React and Python platform to organise private Rocket League matches, featuring scheduling, scoring, and real-time competition workflows.",
       "Designed and delivered client web applications in React and Tailwind, iterating rapidly on live systems in response to user feedback.",
@@ -65,7 +65,7 @@ const SKILLS = [
 const PROJECTS: Project[] = [
   {
     title: "Esports Uni Hub",
-    subtitle: "Final Year Project Â· University of Portsmouth",
+    subtitle: "Final Year Project · University of Portsmouth",
     description: "Full-stack esports society management platform. Grew from zero to 90+ active users across 13 UK universities in under six months. Drove adoption through direct user research and individual society onboarding — not organic discovery.",
     url: "https://esportsunihub.com",
     tags: ["React", "TypeScript", "Full-Stack", "Community Platform"],
@@ -89,13 +89,13 @@ const PROJECTS: Project[] = [
 ];
 
 const LEADERSHIP = [
-  { role: "Student Groups Admin, UPSU",         period: "2025 â€“ present", detail: "Managed operations, event planning, and compliance across societies." },
+  { role: "Student Groups Admin, UPSU",         period: "2025 – present", detail: "Managed operations, event planning, and compliance across societies." },
   { role: "Student Leaders Development Assistant", period: "2025",         detail: "Delivered training programmes for student representatives." },
-  { role: "Student Voice Assistant",             period: "2023 â€“ 2024",   detail: "Facilitated communication between students and faculty." },
-  { role: "Faculty Representative",              period: "2022 â€“ 2023",   detail: "Represented students in university leadership meetings." },
+  { role: "Student Voice Assistant",             period: "2023 – 2024",   detail: "Facilitated communication between students and faculty." },
+  { role: "Faculty Representative",              period: "2022 – 2023",   detail: "Represented students in university leadership meetings." },
 ];
 
-// â”€â”€ Hooks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Hooks ──────────────────────────────────────────────────────────────────────
 
 function useReveal(threshold = 0.1) {
   const ref = useRef<HTMLDivElement>(null);
@@ -133,7 +133,7 @@ function useTypewriter(text: string, speed = 55, startDelay = 0) {
   return { displayed, done };
 }
 
-// â”€â”€ Animation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Animation helpers ──────────────────────────────────────────────────────────
 
 function FadeSection({ children, delay = 0, className = "" }: { children: ReactNode; delay?: number; className?: string }) {
   const { ref, visible } = useReveal();
@@ -178,7 +178,7 @@ function SectionLabel({ children }: { children: ReactNode }) {
   );
 }
 
-// â”€â”€ Code reveal animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Code reveal animation ──────────────────────────────────────────────────────
 
 type Lang = "python" | "typescript" | "sql" | "cpp";
 type TK = "kw" | "type" | "str" | "comment" | "num" | "call" | "name" | "op" | "plain";
@@ -455,7 +455,7 @@ function CodeRevealSection({ sectionKey, children }: { sectionKey: string; child
   );
 }
 
-// â”€â”€ Terminal hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Terminal hero ──────────────────────────────────────────────────────────────
 
 function TerminalHero() {
   const line1 = useTypewriter("Nana Adjei", 80, 300);
@@ -494,7 +494,7 @@ function TerminalHero() {
   );
 }
 
-// â”€â”€ Stats bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Stats bar ──────────────────────────────────────────────────────────────────
 
 function AnimatedCount({ target, suffix = "" }: { target: number; suffix?: string }) {
   const [count, setCount] = useState(0);
@@ -519,7 +519,7 @@ function AnimatedCount({ target, suffix = "" }: { target: number; suffix?: strin
   );
 }
 
-// â”€â”€ CV Modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── CV Modal ───────────────────────────────────────────────────────────────────
 
 function CVModal({ onClose }: { onClose: () => void }) {
   const handlePrint = useCallback(() => window.print(), []);
@@ -605,7 +605,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
                   <ul className="space-y-1">
                     {exp.bullets.map((b, i) => (
                       <li key={i} className="flex gap-2 text-slate-400 text-xs">
-                        <span className="text-green-500/60 flex-shrink-0 mt-0.5">â€¢</span>
+                        <span className="text-green-500/60 flex-shrink-0 mt-0.5">•</span>
                         {b}
                       </li>
                     ))}
@@ -631,13 +631,13 @@ function CVModal({ onClose }: { onClose: () => void }) {
             <p className="text-xs uppercase tracking-widest text-slate-500 font-semibold mb-2">Education</p>
             <div className="flex justify-between items-baseline mb-1">
               <span className="font-semibold text-white text-sm">University of Portsmouth</span>
-              <span className="text-slate-500 text-xs">2022 â€“ 2026</span>
+              <span className="text-slate-500 text-xs">2022 – 2026</span>
             </div>
             <p className="text-slate-400 text-xs mb-1">BSc (Hons) Software Engineering, First Class</p>
             <ul className="space-y-0.5 text-xs text-slate-500">
-              <li>â€¢ Highest mark in cohort for Application Programming</li>
-              <li>â€¢ A Levels: Computer Science (A*), Mathematics (B), Physics (B)</li>
-              <li>â€¢ GCSEs: 10 grades 9â€“5, including Maths, Physics, and Computer Science</li>
+              <li>• Highest mark in cohort for Application Programming</li>
+              <li>• A Levels: Computer Science (A*), Mathematics (B), Physics (B)</li>
+              <li>• GCSEs: 10 grades 9–5, including Maths, Physics, and Computer Science</li>
             </ul>
           </div>
 
@@ -647,7 +647,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-2">
               {PROJECTS.map((p) => (
                 <div key={p.title} className="flex gap-2 text-xs">
-                  <span className="text-green-500/60 flex-shrink-0 mt-0.5">â€º</span>
+                  <span className="text-green-500/60 flex-shrink-0 mt-0.5">›</span>
                   <div>
                     <span className="font-medium text-white">{p.title}</span>
                     {p.url && <span className="text-slate-500 ml-2">{p.url}</span>}
@@ -676,7 +676,7 @@ function CVModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-// â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Main component ─────────────────────────────────────────────────────────────
 
 const DevPortfolio = () => {
   const [cvOpen, setCvOpen] = useState(false);
@@ -748,7 +748,7 @@ const DevPortfolio = () => {
 
       <div className="relative z-10">
 
-        {/* â”€â”€ Hero â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Hero ────────────────────────────────────────────────────────────── */}
         <header className="max-w-4xl mx-auto px-6 pt-20 pb-14 cv-hero">
           <div className="glass-card p-8 sm:p-10">
             <TerminalHero />
@@ -780,7 +780,7 @@ const DevPortfolio = () => {
 
         <div className="max-w-4xl mx-auto px-6 pb-28 space-y-18">
 
-          {/* â”€â”€ Stats â”€â”€ */}
+          {/* ── Stats ── */}
           <FadeSection className="max-w-4xl">
             <div className="grid grid-cols-3 gap-3">
               {[
@@ -801,7 +801,7 @@ const DevPortfolio = () => {
             </div>
           </FadeSection>
 
-          {/* â”€â”€ Summary â”€â”€ */}
+          {/* ── Summary ── */}
           <FadeSection>
             <SectionLabel>Summary</SectionLabel>
             <SlideItem>
@@ -817,7 +817,7 @@ const DevPortfolio = () => {
             </SlideItem>
           </FadeSection>
 
-          {/* â”€â”€ Experience â”€â”€ */}
+          {/* ── Experience ── */}
           <FadeSection>
             <SectionLabel>Experience</SectionLabel>
             <div className="relative">
@@ -849,7 +849,7 @@ const DevPortfolio = () => {
                               className="flex gap-2.5 text-sm text-slate-400 leading-relaxed"
                               style={{ opacity: 0, animation: `cvFadeIn 0.4s ease ${j * 90 + 300}ms forwards` }}
                             >
-                              <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">â€º</span>
+                              <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">›</span>
                               {bullet}
                             </li>
                           ))}
@@ -862,7 +862,7 @@ const DevPortfolio = () => {
             </div>
           </FadeSection>
 
-          {/* â”€â”€ Skills â”€â”€ */}
+          {/* ── Skills ── */}
           <CodeRevealSection sectionKey="skills">
             <SectionLabel>Skills</SectionLabel>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -898,7 +898,7 @@ const DevPortfolio = () => {
             </div>
           </CodeRevealSection>
 
-          {/* â”€â”€ Projects â”€â”€ */}
+          {/* ── Projects ── */}
           <CodeRevealSection sectionKey="projects">
           <FadeSection>
             <SectionLabel>Projects</SectionLabel>
@@ -954,7 +954,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* â”€â”€ Education â”€â”€ */}
+          {/* ── Education ── */}
           <CodeRevealSection sectionKey="education">
           <FadeSection>
             <SectionLabel>Education</SectionLabel>
@@ -966,7 +966,7 @@ const DevPortfolio = () => {
                     <p className="text-green-400 text-sm mt-0.5">BSc (Hons) Software Engineering, First Class</p>
                   </div>
                   <span className="text-xs text-slate-500 font-mono bg-white/5 px-2.5 py-1 rounded-lg border border-white/8">
-                    2022 â€“ 2026
+                    2022 – 2026
                   </span>
                 </div>
                 <ul className="space-y-2">
@@ -974,10 +974,10 @@ const DevPortfolio = () => {
                     "Highest mark in cohort for Application Programming",
                     "Relevant modules: Software Engineering Culture, Databases, AI, Web Programming",
                     "A Levels: Computer Science (A*), Mathematics (B), Physics (B)",
-                    "GCSEs: 10 grades 9â€“5, including Maths, Physics, and Computer Science",
+                    "GCSEs: 10 grades 9–5, including Maths, Physics, and Computer Science",
                   ].map((item, i) => (
                     <li key={i} className="flex gap-2.5 text-sm text-slate-400">
-                      <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">â€º</span>
+                      <span className="text-green-500/50 font-mono mt-0.5 flex-shrink-0 text-xs">›</span>
                       {item}
                     </li>
                   ))}
@@ -987,7 +987,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* â”€â”€ Leadership â”€â”€ */}
+          {/* ── Leadership ── */}
           <CodeRevealSection sectionKey="leadership">
           <FadeSection>
             <SectionLabel>Leadership & Responsibility</SectionLabel>
@@ -1010,7 +1010,7 @@ const DevPortfolio = () => {
           </FadeSection>
           </CodeRevealSection>
 
-          {/* â”€â”€ Contact â”€â”€ */}
+          {/* ── Contact ── */}
           <FadeSection>
             <SectionLabel>Get in touch</SectionLabel>
             <SlideItem>
@@ -1048,5 +1048,3 @@ const DevPortfolio = () => {
 };
 
 export default DevPortfolio;
-
-
