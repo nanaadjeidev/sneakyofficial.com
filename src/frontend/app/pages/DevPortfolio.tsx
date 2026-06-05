@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Standalone developer portfolio with animated CV integration.
  * Route: /portfolio
  */
